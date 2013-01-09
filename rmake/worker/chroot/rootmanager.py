@@ -84,14 +84,17 @@ class ChrootQueue(object):
 
     def _createRootPath(self, troveName):
         name = troveName.rsplit(':', 1)[0]
-        path =  self.root + '/%s' % name
+        # There is a limit to how long UNIX socket paths can be, and the chroot
+        # server socket is inside this directory. So try to keep the path
+        # length to a reasonable size.
+        name = name[:32]
+        path = os.path.join(self.root, name)
         count = 1
         if not os.path.exists(path) and not path in self.chroots:
             self.chroots[path] = None
             return path
-        path = path + '-%s'
         while True:
-            fullPath = path % count
+            fullPath = path + ('-%d' % count)
             if not os.path.exists(fullPath) and not fullPath in self.chroots:
                 self.chroots[fullPath] = None
                 return fullPath
