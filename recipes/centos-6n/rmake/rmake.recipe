@@ -40,12 +40,12 @@ class RmakeRecipe(CPackageRecipe):
 
         r.InitialContents('%(sysconfdir)s/rmake/(serverrc|rmakerc)')
 
-        makeargs = (
+        makeArgs = (
             'libdir=%(libdir)s '
             'initdir=%(initdir)s '
             )
-        r.Make(makeargs)
-        r.MakeInstall(makeargs)
+        r.Make(makeArgs)
+        r.MakeInstall(makeArgs)
 
         r.MakeDirs('%(localstatedir)s/{lib,log,run}/rmake')
         r.MakeDirs('%(localstatedir)s/rmake', mode=0700)
@@ -171,5 +171,4 @@ serverName localhost
                       '%(sysconfdir)s/rmake/client.d/00_rmake_multinode')
         r.Requires('rmake:python(%(version)s)', 'rmake_node/__init__.py')
         # Avoid rpl-2-py26 <-> fl:2 compatibility issues
-
         r.NormalizeInitscriptContents(exceptions='%(initdir)s/.*')
