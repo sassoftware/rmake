@@ -323,12 +323,9 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
     def getProxyUrl(self):
         if not self.proxyUrl:
             return None
-        if self.isExternalProxy():
-            return self.proxyUrl
-        else:
-            # need to have the proxy url be a fqdn so that it can
-            # be used by rmake nodes
-            return self.translateUrl(self.proxyUrl)
+        # need to have the proxy url be a fqdn so that it can
+        # be used by rmake nodes
+        return self.translateUrl(self.proxyUrl)
 
     def getUserGlobs(self):
         return self.reposUser

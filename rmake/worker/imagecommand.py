@@ -34,7 +34,7 @@ class ImageCommand(command.AttachedCommand):
         self.imageCfg = imageCfg
         self.logData = logData
         self.logPath = logPath
-        self.client = rbuilderclient.RbuilderClient(self.imageCfg.rbuilderUrl,
+        self.client = rbuilderclient.RbuilderClient(self.imageCfg.getAuthUrl(),
                                                     self.imageCfg.rmakeUser[0],
                                                     self.imageCfg.rmakeUser[1])
 

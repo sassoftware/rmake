@@ -49,7 +49,7 @@ ServerConfig = dict(
     )
 
 def getAuthUrl(self):
-    return self.rbuilderUrl
+    return self.translateUrl(self.rbuilderUrl)
 
 def checkBuildSanity(self):
     #cancel out build sanity check - this is not a build node.
