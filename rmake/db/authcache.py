@@ -40,7 +40,7 @@ class AuthenticationCache(object):
             except (DatabaseLocked, ColumnNotUnique):
                 # Race condition -- someone inserted a conflicting value
                 # between our statements. Try again.
-                continue
+                self.db.rollback()
             else:
                 # Success
                 break
