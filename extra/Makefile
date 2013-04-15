@@ -34,6 +34,21 @@ install-mkdirs:
 install: install-mkdirs rmake.init
 	install -m755 rmake.init $(DESTDIR)/$(initdir)/rmake
 	install -m755 rmake-node.init $(DESTDIR)/$(initdir)/rmake-node
+	# proxy
+	install -D -m755 proxy/cleanup.sh $(DESTDIR)/etc/cron.daily/rmake-proxy-cleanup
+	install -D -m644 proxy/nginx.conf $(DESTDIR)/etc/nginx/conf.d/rmake-proxy.conf
+	install -D -m644 proxy/proxy.cnr $(DESTDIR)/etc/conary-repos/rmake-proxy.cnr
+	install -D -m644 proxy/server.conf $(DESTDIR)/etc/rmake/server.d/proxy
+	install -d -m755 $(DESTDIR)/etc/conary-repos/vhosts
+	ln -sfn ../rmake-proxy.cnr $(DESTDIR)/etc/conary-repos/vhosts/rmake.proxy
+	# repos
+	install -D -m755 repos/cleanup.sh $(DESTDIR)/etc/cron.daily/rmake-repos-cleanup
+	install -D -m644 repos/nginx.conf $(DESTDIR)/etc/nginx/conf.d/rmake-repos.conf
+	install -D -m644 repos/repos.cnr $(DESTDIR)/etc/conary-repos/rmake-repos.cnr
+	install -D -m755 repos/resetrepos.py $(DESTDIR)/usr/sbin/rmake-resetrepos
+	install -D -m644 repos/server.conf $(DESTDIR)/etc/rmake/server.d/repos
+	install -d -m755 $(DESTDIR)/etc/conary-repos/vhosts
+	ln -sfn ../rmake-repos.cnr $(DESTDIR)/etc/conary-repos/vhosts/rmake.repos
 
 install-client:
 

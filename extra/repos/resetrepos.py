@@ -28,7 +28,7 @@ from conary.server import schema
 
 def main(argv):
     if len(argv) < 2:
-        dbPath = '%(reposdir)s/db/sqldb'
+        dbPath = '/srv/rmake-repos/db/sqldb'
     else:
         dbPath = sys.argv[1]
 
@@ -42,25 +42,26 @@ def main(argv):
     os.chmod(passwordPath, 0700)
     os.chown(passwordPath, pwd.getpwnam('rmake').pw_uid,
                            pwd.getpwnam('rmake').pw_gid)
-    open(passwordPath, 'w').write('user localhost rmake %%s\n' %% newPassword)
+    open(passwordPath, 'w').write('user localhost rmake %s\n' % newPassword)
     addUser(db, 'rmake', newPassword, write=True)
 
-    print "New password stored in database and at %%s" %% passwordPath
+    print "New password stored in database and at %s" % passwordPath
     return 0
 
 def getDb(path):
     if os.path.exists(path):
         print "Deleting database"
         os.remove(path)
-    if os.listdir("%(reposdir)s/contents/"):
+    if os.listdir("/srv/rmake-repos/contents/"):
         print "Deleting contents..."
-        os.system("rm -rf %(reposdir)s/contents/*")
+        os.system("rm -rf /srv/rmake-repos/contents/*")
     open(path, 'w')
     os.chown(path, pwd.getpwnam('apache').pw_uid,
                    pwd.getpwnam('apache').pw_gid)
 
     db = dbstore.connect(path, driver='sqlite')
     schema.loadSchema(db, True)
+    schema.setupTempTables(db)
     return db
 
 def addUser(db, name, password=None, write=False):
@@ -73,7 +74,9 @@ def addUser(db, name, password=None, write=False):
         auth.deleteUserByName(name)
 
     auth.addUser(name, password)
-    auth.addAcl(name, None, None, write, False, False)
+    auth.addRole(name)
+    auth.addRoleMember(name, name)
+    auth.addAcl(name, None, None, write, False)
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))

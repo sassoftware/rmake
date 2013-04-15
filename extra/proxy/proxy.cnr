@@ -1,0 +1,4 @@
+changesetCacheDir /srv/rmake-proxy/cscache
+proxyContentsDir /srv/rmake-proxy/contents
+tmpDir /srv/rmake-proxy/tmp
+baseUri /

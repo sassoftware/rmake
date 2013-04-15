@@ -85,71 +85,42 @@ class RmakeRecipe(CPackageRecipe):
         r.UtilizeGroup('rmake-chroot', '%(libexecdir)s/rmake/chroothelper')
         r.Doc('extra/plugins/*.py')
 
-
         ## package rmake-proxy
         r.macros.proxydir = '%(servicedir)s/rmake-proxy'
-        r.macros.proxyport = '7778'
-        r.addSource('rmake-proxy.conf',
-                    dir = '/etc/httpd/conf.d/', macros=True,
-                    package='rmake-proxy')
-        r.addSource('rmake-proxy.cnr',
-                    dir = '%(proxydir)s/config/', macros=True,
-                    package='rmake-proxy')
-        r.addSource('rmake-proxy-cleanup', dest = '/etc/cron.daily/',
-                    macros=True,
-                    package='rmake-proxy', mode=0755)
-        r.Create('%(sysconfdir)s/rmake/server.d/proxy',
-                 contents='proxy http://localhost:%(proxyport)s/',
-                 package='rmake-proxy')
         for x in [ 'cscache', 'contents', 'tmp' ]:
             dir = '%%(proxydir)s/%s' % x
             r.MakeDirs(dir)
             r.Ownership('apache', 'apache', dir)
             r.SetModes(dir, 0700)
-
         r.PackageSpec('rmake-proxy',
-                      '%(proxydir)s/',
-                      '/etc/httpd/conf.d/rmake-proxy.conf',
-                      '/etc/cron.daily/rmake-proxy-cleanup',
-                      '%(sysconfdir)s/rmake/server.d/proxy')
-        r.ExcludeDirectories(exceptions='%(proxydir)s.*')
-
-        # Runtime dependencies
-        r.Requires('mod_python:rpm', '/etc/httpd/conf.d/rmake-proxy.conf')
-
+                '%(proxydir)s/',
+                '/etc/conary-repos/rmake-proxy.cnr',
+                '/etc/conary-repos/vhosts/rmake.proxy',
+                '/etc/cron.daily/rmake-proxy-cleanup',
+                '/etc/nginx/conf.d/rmake-proxy.conf',
+                '/etc/rmake/server.d/proxy',
+                )
 
         ## package rmake-repos
         r.macros.reposdir = '%(servicedir)s/rmake-repos'
-        r.macros.reposport = '7777'
-        r.addSource('rmake-repos.conf',
-                    dir = '/etc/httpd/conf.d/', macros=True,
-                    package='rmake-repos')
-        r.addSource('rmake-repos.cnr',
-                    dir = '%(reposdir)s/config/', macros=True,
-                    package='rmake-repos')
-        r.addSource('rmake-resetrepos', dir='%(sbindir)s', macros=True,
-                    mode=0755)
-        r.Create('%(sysconfdir)s/rmake/server.d/repos',
-                 contents='''
-serverUrl http://localhost:%(reposport)s/conary/
-serverName localhost
-''',
-                 package='rmake-repos')
         for x in [ 'cscache', 'contents', 'tmp', 'db' ]:
             dir = '%%(reposdir)s/%s' % x
             r.MakeDirs(dir)
             r.Ownership('apache', 'apache', dir)
             r.SetModes(dir, 0700)
-
         r.PackageSpec('rmake-repos',
-                      '%(reposdir)s/',
-                      '/etc/httpd/conf.d/rmake-repos.conf',
-                      '%(sbindir)s/rmake-resetrepos',
-                      '%(sysconfdir)s/rmake/server.d/repos')
+                '%(reposdir)s/',
+                '/etc/conary-repos/rmake-repos.cnr',
+                '/etc/conary-repos/vhosts/rmake.repos',
+                '/etc/cron.daily/rmake-repos-cleanup',
+                '/etc/nginx/conf.d/rmake-repos.conf',
+                '/etc/rmake/server.d/repos',
+                '/usr/sbin/rmake-resetrepos',
+                )
 
-        # Runtime dependencies
-        r.Requires('mod_python:runtime', '/etc/httpd/conf.d/rmake-repos.conf')
-
+        r.ComponentSpec('config', '/etc/conary-repos/vhosts/')
+        r.Requires('conary-repository:server', '/etc/nginx/')
+        r.Requires('/usr/sbin/nginx', '/etc/nginx/')
 
         ## package rmake-node
         # This package has files required on individual build nodes

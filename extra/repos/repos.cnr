@@ -1,0 +1,5 @@
+serverName localhost
+tmpDir /srv/rmake-repos/tmp
+#changesetCacheDir /srv/rmake-repos/cscache
+contentsDir /srv/rmake-repos/contents
+repositoryDb sqlite /srv/rmake-repos/db/sqldb
