@@ -122,8 +122,8 @@ class RmakeRecipe(CPackageRecipe):
                 )
 
         r.ComponentSpec('config', '/etc/conary-repos/vhosts/')
-        r.Requires('conary-repository:server', '/etc/nginx/')
-        r.Requires('/usr/sbin/nginx', '/etc/nginx/')
+        r.Requires('conary-repository:server', '/etc/nginx/conf.d/')
+        r.Requires('/usr/sbin/nginx', '/etc/nginx/conf.d/')
 
         ## package rmake-node
         # This package has files required on individual build nodes
