@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import signal
+import sys
 import tempfile
 import time
 import traceback
@@ -261,8 +262,9 @@ class RmakeHelper(rephelp.RepositoryHelper, PluginTest):
         self.rbaServerPid = None
         self.mockRbuilder = None
 
-        from rmake_plugins.multinode.server import servercfg as pluginservercfg
-        pluginservercfg.resetConfig()
+        pluginservercfg = sys.modules.get('rmake_plugins.multinode.server.servercfg')
+        if pluginservercfg:
+            pluginservercfg.resetConfig()
 
     def stopRmakeServer(self):
         self._kill(self.rmakeServerPid, useCoverage=False)
