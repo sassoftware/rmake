@@ -27,7 +27,10 @@ def get_archive(*subpath):
 
 
 def get_plugin_dirs():
-    return [get_path('rmake_plugins')]
+    if 'site-packages' in _test_root:
+        return ['/usr/share/rmake/plugins']
+    else:
+        return [get_path('rmake_plugins')]
 
 
 def _get_test_root():
