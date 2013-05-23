@@ -17,7 +17,7 @@
 
 import urllib2
 
-from conary.lib import cfgtypes
+from conary.lib import cfg, cfgtypes
 
 from rmake.server import servercfg
 from rmake import errors
@@ -35,18 +35,16 @@ def getMessageBusHost(self, qualified=False):
         return host
 
 
-ServerConfig = dict(
-    reposUrl       = (cfgtypes.CfgString, 'https://LOCAL:7777'),
-    rmakeUrl       = (cfgtypes.CfgString, 'https://localhost:9999'),
-    proxyUrl       = (cfgtypes.CfgString, None),
-    rbuilderUrl    = (cfgtypes.CfgString, 'https://localhost/'),
+class ServerConfig(cfg.ConfigFile):
+    reposUrl       = (cfgtypes.CfgString, 'https://LOCAL:7777')
+    rmakeUrl       = (cfgtypes.CfgString, 'https://localhost:9999')
+    proxyUrl       = (cfgtypes.CfgString, None)
+    rbuilderUrl    = (cfgtypes.CfgString, 'https://localhost/')
     # if None, start one locally
     # if "LOCAL", don't start one but still use localhost
-    messageBusHost = (cfgtypes.CfgString, None),
-    messageBusPort = (cfgtypes.CfgInt, 50900),
+    messageBusHost = (cfgtypes.CfgString, None)
+    messageBusPort = (cfgtypes.CfgInt, 50900)
 
-    getMessageBusHost=getMessageBusHost,
-    )
 
 def getAuthUrl(self):
     return self.translateUrl(self.rbuilderUrl)
@@ -79,8 +77,14 @@ def sanityCheckForStart(self):
 
 def updateConfig():
     mainConfig = servercfg.rMakeConfiguration
-    for key, value in ServerConfig.items():
-        setattr(mainConfig, key, value)
+    if hasattr(mainConfig, 'extend'):
+        # Conary >= 2.5
+        mainConfig.extend(ServerConfig)
+    else:
+        # Conary < 2.5
+        for option in ServerConfig._getConfigOptions():
+            key, option = option[0], option[1:]
+            setattr(mainConfig, key, option)
     if not hasattr(mainConfig, 'oldSanityCheck'):
         mainConfig.oldSanityCheck = mainConfig.sanityCheckForStart
         mainConfig.oldGetAuthUrl = mainConfig.getAuthUrl
@@ -88,6 +92,7 @@ def updateConfig():
 
     mainConfig.checkBuildSanity = checkBuildSanity
     mainConfig.getAuthUrl = getAuthUrl
+    mainConfig.getMessageBusHost = getMessageBusHost
     mainConfig.sanityCheckForStart = sanityCheckForStart
 
 def resetConfig():

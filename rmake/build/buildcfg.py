@@ -136,6 +136,8 @@ class CfgUser(CfgType):
 
 class RmakeBuildContext(cfg.ConfigSection):
 
+    _cfg_bases = [conarycfg.ConaryContext]
+
     bootstrapTroves      = (CfgList(CfgTroveSpec), [],
             "INTERNAL USE ONLY: Troves to be installed before the remaining "
             "chroot contents.")
@@ -166,10 +168,12 @@ class RmakeBuildContext(cfg.ConfigSection):
 
     def __init__(self, parent, doc=None):
         cfg.ConfigSection.__init__(self, parent, doc=None)
+        if hasattr(self, 'addConfigOption'):
+            # Conary < 2.5
+            for info in conarycfg.ConaryContext._getConfigOptions():
+                if info[0] not in self:
+                    self.addConfigOption(*info)
 
-        for info in conarycfg.ConaryContext._getConfigOptions():
-            if info[0] not in self:
-                self.addConfigOption(*info)
 
 class FreezableConfigMixin(object):
 
@@ -222,6 +226,8 @@ class FreezableConfigMixin(object):
 
 class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
 
+    _cfg_bases = [RmakeBuildContext]
+
     buildTroveSpecs      = CfgList(CfgTroveSpec)
     isolateTroves        = (CfgBool, False, "Ignore the results of other "
             "troves in the same job when searching for build requirements.")
@@ -244,7 +250,7 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
     # and should not be displayed.  They are job-specific.  However,
     # they must be stored with the job, parsed with the job, etc.
 
-    _hiddenOptions = [ 'buildTroveSpecs', 'resolveTroveTups', 'jobContext',
+    _cfg_hidden = [ 'buildTroveSpecs', 'resolveTroveTups', 'jobContext',
                        'recurseGroups', 'recursedGroupTroves',
                        'prebuiltBinaries', 'ignoreExternalRebuildDeps',
                        'ignoreAllRebuildDeps', 'primaryTroves', 'reposName',
@@ -272,9 +278,11 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
         conarycfg.ConaryConfiguration.__init__(self, readConfigFiles=False)
         if hasattr(self, 'setIgnoreErrors'):
             self.setIgnoreErrors(ignoreErrors)
-        for info in RmakeBuildContext._getConfigOptions():
-            if info[0] not in self:
-                self.addConfigOption(*info)
+        if hasattr(self, 'addConfigOption'):
+            # Conary < 2.5
+            for info in RmakeBuildContext._getConfigOptions():
+                if info[0] not in self:
+                    self.addConfigOption(*info)
         if strictMode is not None:
             self.strictMode = strictMode
         if not hasattr(self, 'rmakeUrl'):
@@ -304,8 +312,10 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
         self.root = ':memory:'
         self.dbPath = ':memory:'
         self.logFile = []
-        for option in self._hiddenOptions:
-            del self._lowerCaseMap[option.lower()]
+        if hasattr(self, '_lowerCaseMap'):
+            # Conary < 2.5
+            for option in self._cfg_hidden:
+                del self._lowerCaseMap[option.lower()]
 
         self.useConaryConfig(conaryConfig)
         if serverConfig:
@@ -317,16 +327,10 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
         def _shouldOverwrite(key, current, new):
             if key not in new:
                 return False
-            if compat.ConaryVersion().supportsConfigIsDefault():
-                if (current.isDefault(key) and
-                    current[key] == current.getDefaultValue(key) and
-                   (not new.isDefault(key) or
-                    new[key] != new.getDefaultValue(key))):
-                    return True
-            elif (current[key] is current.getDefaultValue(key) or
-                  current[key] == current.getDefaultValue(key)
-                  and (not new[key] is new.getDefaultValue(key)
-                       and not new[key] == new.getDefaultValue(key))):
+            if (current.isDefault(key) and
+                current[key] == current.getDefaultValue(key) and
+               (not new.isDefault(key) or
+                new[key] != new.getDefaultValue(key))):
                 return True
             return False
         if self.strictMode:
@@ -463,7 +467,7 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
         return ''
 
     def _writeKey(self, out, cfgItem, value, options):
-        if cfgItem.name in self._hiddenOptions:
+        if cfgItem.name in self._cfg_hidden:
             if not options.get('displayHidden', False):
                 return
         conarycfg.ConaryConfiguration._writeKey(self, out, cfgItem,

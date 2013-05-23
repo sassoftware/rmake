@@ -20,7 +20,7 @@ from conary.lib import cfg
 from rmake.build import buildcfg
 from rmake.lib import apiutils
 
-class _TroveSettingsRegister(type):
+class _TroveSettingsRegister(type(cfg.ConfigFile)):
     def __init__(class_, *args, **kw):
         type.__init__(class_, *args, **kw)
         apiutils.register_freezable_classmap('TroveSettings', class_)

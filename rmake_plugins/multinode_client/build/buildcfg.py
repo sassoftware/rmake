@@ -17,12 +17,12 @@
 
 import urllib
 
-from conary.lib import cfgtypes
+from conary.lib import cfg, cfgtypes
 
 from rmake.build import buildcfg
 from rmake.lib import apiutils
 
-class BuildContext(object):
+class BuildContext(cfg.ConfigSection):
     rmakeUrl  = (cfgtypes.CfgString, 'unix:///var/lib/rmake/socket')
     rmakeUser = (buildcfg.CfgUser, None)
     clientCert = (cfgtypes.CfgPath, None)
@@ -44,9 +44,15 @@ def getServerUri(self):
     return url
 
 def updateConfig():
-    buildcfg.RmakeBuildContext.rmakeUrl = BuildContext.rmakeUrl
-    buildcfg.RmakeBuildContext.rmakeUser = BuildContext.rmakeUser
-    buildcfg.RmakeBuildContext.clientCert = BuildContext.clientCert
+    if hasattr(buildcfg.RmakeBuildContext, 'extend'):
+        # Conary >= 2.5
+        buildcfg.RmakeBuildContext.extend(BuildContext)
+        buildcfg.BuildConfiguration.extend(BuildContext)
+    else:
+        # Conary < 2.5
+        buildcfg.RmakeBuildContext.rmakeUrl = BuildContext.rmakeUrl
+        buildcfg.RmakeBuildContext.rmakeUser = BuildContext.rmakeUser
+        buildcfg.RmakeBuildContext.clientCert = BuildContext.clientCert
     buildcfg.BuildConfiguration.getServerUri = getServerUri
 
 class SanitizedBuildConfiguration(buildcfg.SanitizedBuildConfiguration):

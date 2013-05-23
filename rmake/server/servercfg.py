@@ -184,16 +184,22 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
 
     dbPath            = dbstore.CfgDriver
 
+    _cfg_aliases = [
+            ('proxy',       'proxyUrl'),
+            ('serverUrl',   'reposUrl'),
+            ('serverName',  'reposName'),
+            ('user',        'reposUser'),
+            ]
+
     def __init__(self, readConfigFiles = False, ignoreErrors=False):
         daemon.DaemonConfig.__init__(self)
         self.setIgnoreErrors(ignoreErrors)
-        self.addAlias('proxy', 'proxyUrl')
-        self.addAlias('serverUrl', 'reposUrl')
-        self.addAlias('serverName', 'reposName')
-        self.addAlias('user',  'reposUser')
+        if hasattr(self, 'addAlias'):
+            # Conary < 2.5
+            for old, new in self._cfg_aliases:
+                self.addAlias(old, new)
         if readConfigFiles:
             self.readFiles()
-
 
     def setServerName(self, serverName):
         for x in list(self.reposUser):
@@ -268,9 +274,6 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
 
     def getReposLogPath(self):
         return self.logDir + '/repos.log'
-
-    def getProxyLogPath(self):
-        return self.logDir + '/proxy.log'
 
     def getSubscriberLogPath(self):
         return self.logDir + '/subscriber.log'
