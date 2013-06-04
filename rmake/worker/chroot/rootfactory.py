@@ -331,6 +331,8 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
 
 class rMakeChroot(ConaryBasedChroot):
 
+    busyboxDir = '/rbin'
+
     def __init__(self,
             buildTrove,
             chrootHelperPath,
@@ -498,7 +500,7 @@ class rMakeChroot(ConaryBasedChroot):
         if self.canChroot():
             if self._lock(root, fcntl.LOCK_EX):
                 self.logger.info('Running chroot helper to unmount...')
-                util.mkdirChain(root + '/sbin')
+                util.mkdirChain(root + self.busyboxDir)
                 rc = os.system('%s --unmount %s' % (self.chrootHelperPath, root))
                 if rc:
                     if raiseError:
@@ -518,8 +520,8 @@ class rMakeChroot(ConaryBasedChroot):
                         "by another process")
                 return False
             self.logger.info('Running chroot helper to clean/unmount...')
-            util.mkdirChain(root + '/sbin')
-            shutil.copy('/sbin/busybox', root + '/sbin/busybox')
+            util.mkdirChain(root + self.busyboxDir)
+            shutil.copy('/sbin/busybox', root + self.busyboxDir + '/busybox')
             rc = os.system('%s %s --clean' % (self.chrootHelperPath, root))
             if rc:
                 if raiseError:

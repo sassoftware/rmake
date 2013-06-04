@@ -368,8 +368,7 @@ unmountchroot(const char * chrootDir, int opt_clean) {
             }
             pid = fork();
             if (pid == 0) {
-                execl("/sbin/busybox", "/sbin/busybox", "rm", "-rf", 
-                      childPath, NULL);
+                execl(BUSYBOX, "busybox", "rm", "-rf", childPath, NULL);
                 /* this will not return unless error */
                 perror("execl");
                 _exit(1);
@@ -395,7 +394,11 @@ unmountchroot(const char * chrootDir, int opt_clean) {
         printf("deleting other files owned by  uid=%d\n", myUid);
     pid = fork();
     if (pid == 0) {
-        execl("/sbin/busybox", "/sbin/busybox",  "sh", "-c", "/sbin/busybox find / | /sbin/busybox sh -c 'while read file; do if `/sbin/busybox test -O $file`; then /sbin/busybox rm -rf $file; fi; done'", NULL);
+        execl(BUSYBOX, "busybox",  "sh", "-c",
+                BUSYBOX " find / | "
+                BUSYBOX " sh -c 'while read file; do "
+                    "if `" BUSYBOX " test -O $file`; "
+                    "then " BUSYBOX " rm -rf $file; fi; done'", NULL);
         /* this will not return unless error */
         perror("execl");
         _exit(1);
