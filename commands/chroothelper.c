@@ -109,7 +109,7 @@ switch_to_uid_gid(int uid, int gid) {
 
 static int
 mount_dir(const char *chrootDir, struct mount_t opts) {
-    int rc;
+    int rc, flags;
     struct stat st;
     char tempPath[PATH_MAX];
 
@@ -125,13 +125,25 @@ mount_dir(const char *chrootDir, struct mount_t opts) {
         printf("mount %s -> %s (type %s)\n", opts.from, tempPath, opts.type);
     /* check destination directory exists */
     rc = stat(tempPath, &st);
-    if (rc == -1 || !S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "ERROR: %s should be an existing directory\n", tempPath);
+    if (rc == -1) {
+        if (mkdir(tempPath, 0777) != 0) {
+            fprintf(stderr, "ERROR: %s does not exist and could not be created:\n", tempPath);
+            perror("mkdir");
+            return 1;
+        }
+    } else if (!S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "ERROR: %s is not a directory\n", tempPath);
         return 1;
     }
-    if (-1 == mount(opts.from, tempPath, opts.type, 0, opts.data)) {
+    if (opts.data != NULL && strcmp(opts.data, "bind") == 0) {
+        flags = MS_BIND;
+    } else {
+        flags = 0;
+    }
+    if (mount(opts.from, tempPath, opts.type, flags, opts.data)) {
         perror("mount");
         /* don't error out on mount errors - if it's already mounted - great!*/
+        return 1;
     }
     return 0;
 }
