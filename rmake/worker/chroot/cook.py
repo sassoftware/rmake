@@ -357,7 +357,7 @@ def _cookTrove(cfg, repos, name, version, flavorList, targetLabel,
                                 ignoreDeps=False,
                                 logBuild=True,
                                 crossCompile=crossCompile,
-                                requireCleanSources=True,
+                                requireCleanSources=False,
                                 groupOptions=groupOptions)
         if not built:
             if log.errorOccurred():
