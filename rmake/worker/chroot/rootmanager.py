@@ -412,6 +412,7 @@ class rMakeChrootServer(object):
                 args.append('--no-tag-scripts')
             if self.chrootCaps:
                 args.append('--chroot-caps')
+            args.extend(self.chroot.helperArgs())
             os.execv(prog, args)
         else:
             # testsuite and FakeRoot path

@@ -31,7 +31,7 @@ import urllib
 from conary import dbstore
 from conary.lib import log, cfg, util
 from conary.lib.cfgtypes import CfgPath, CfgString, CfgInt
-from conary.lib.cfgtypes import CfgBool, CfgPathList, CfgDict, ParseError
+from conary.lib.cfgtypes import CfgBool, CfgPathList, CfgDict, CfgList, ParseError
 from conary.conarycfg import CfgUserInfo
 
 from rmake import constants
@@ -90,6 +90,7 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
             "This has the potential to be unsafe.")
     chrootServerPorts = (CfgPortRange, (63000, 64000),
             "Port range to be used for 'rmake chroot' sessions.")
+    chrootExtraMounts = CfgList(CfgString)
     hostName          = (CfgString, 'localhost')
     verbose           = False
 

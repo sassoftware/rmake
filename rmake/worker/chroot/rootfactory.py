@@ -28,6 +28,7 @@ import itertools
 import os
 import pwd
 import shutil
+import subprocess
 import sys
 import stat
 
@@ -494,6 +495,17 @@ class rMakeChroot(ConaryBasedChroot):
         self.lockFile.close()
         self.lockFile = None
 
+    def helperArgs(self):
+        args = []
+        for mount in self.serverCfg.chrootExtraMounts:
+            args.append('--extra-mount')
+            args.append(mount)
+        return args
+
+    def callHelper(self, root, args):
+        args = [self.chrootHelperPath, root] + self.helperArgs() + args
+        return subprocess.Popen(args, shell=False).wait()
+
     def unmount(self, root, raiseError=True):
         if not os.path.exists(root):
             return True
@@ -501,8 +513,7 @@ class rMakeChroot(ConaryBasedChroot):
             if self._lock(root, fcntl.LOCK_EX):
                 self.logger.info('Running chroot helper to unmount...')
                 util.mkdirChain(root + self.busyboxDir)
-                rc = os.system('%s --unmount %s' % (self.chrootHelperPath, root))
-                if rc:
+                if self.callHelper(root, ['--unmount']):
                     if raiseError:
                         raise errors.ServerError('Could not unmount old chroot')
                     return False
@@ -522,8 +533,7 @@ class rMakeChroot(ConaryBasedChroot):
             self.logger.info('Running chroot helper to clean/unmount...')
             util.mkdirChain(root + self.busyboxDir)
             shutil.copy('/sbin/busybox', root + self.busyboxDir + '/busybox')
-            rc = os.system('%s %s --clean' % (self.chrootHelperPath, root))
-            if rc:
+            if self.callHelper(root, ['--clean']):
                 if raiseError:
                     raise errors.ServerError(
                             'Cannot create chroot - chroot helper failed'

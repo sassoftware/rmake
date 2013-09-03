@@ -68,6 +68,8 @@
 /* global option for verbose execution */
 static int opt_verbose = 0;
 static char conary_interpreter[PATH_MAX];
+static int num_mounts = 0;
+static struct mount_t **mounts;
 
 
 static struct passwd *
@@ -320,11 +322,11 @@ unmountchroot(const char * chrootDir, int opt_clean) {
     }
 
     /* we still need to be root to umount */
-    for (i=0; i < (sizeof(mounts) / sizeof(mounts[0])); i++) {
+    for (i=0; i < num_mounts; i++) {
         if (opt_verbose) {
-            printf("umount %s\n", mounts[i].to);
+            printf("umount %s\n", mounts[i]->to);
         }
-        if (umount_quiet(mounts[i].to)) {
+        if (umount_quiet(mounts[i]->to)) {
             perror("umount");
         }
     }
@@ -610,8 +612,8 @@ enter_chroot(const char * chrootDir, const char * socketPath, int useTmpfs,
                              * unless someone's abusing the system */
 
     /* do the mounting here, since there is no mount capability */
-    for(i=0; i < (sizeof(mounts) / sizeof(mounts[0])); i++) {
-        if ( (rc = mount_dir(chrootDir, mounts[i])) )
+    for(i=0; i < num_mounts; i++) {
+        if ( (rc = mount_dir(chrootDir, *mounts[i])) )
             return rc;
     }
     if (useTmpfs) {
@@ -858,7 +860,7 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-    int rc;
+    int rc, i;
 
     int opt_clean = 0; /* set if we need to clean */
     int opt_unmount = 0; /* set if we need to unmount only */
@@ -874,11 +876,19 @@ main(int argc, char **argv)
     char * chrootDir = NULL;
     char * socketPath = NULL;
 
+    num_mounts = sizeof(default_mounts) / sizeof(struct mount_t);
+    mounts = malloc(sizeof(void*) * num_mounts);
+    for (i = 0; i < num_mounts; i++) {
+        mounts[i] = malloc(sizeof(struct mount_t));
+        memcpy(mounts[i], &default_mounts[i], sizeof(struct mount_t));
+    }
+
     struct option main_options[] = {
 	{"tmpfs", no_argument, &opt_tmpfs, 1},
 	{"no-chroot-user", no_argument, &opt_noChrootUser, 1},
 	{"no-tag-scripts", no_argument, &opt_noTagScripts, 1},
     {"chroot-caps", no_argument, &opt_chroot_caps, 1},
+    {"extra-mount", required_argument, NULL, 'e'},
 	{"clean", no_argument, &opt_clean, 1},
 	{"unmount", no_argument, &opt_unmount, 1},
 	{"arch", required_argument, NULL, 'a'},
@@ -888,7 +898,7 @@ main(int argc, char **argv)
     };
 
     while (1) {
-        rc = getopt_long(argc, argv, "a:chv", main_options, NULL);
+        rc = getopt_long(argc, argv, "a:cehv", main_options, NULL);
         if (rc == -1)
             break;
 
@@ -903,6 +913,13 @@ main(int argc, char **argv)
             case 'v':
                 opt_verbose++;
                 break;
+            case 'e':
+                mounts[num_mounts] = malloc(sizeof(struct mount_t));
+                mounts[num_mounts]->from = strtok(optarg, " ");
+                mounts[num_mounts]->to = strtok(NULL, " ");
+                mounts[num_mounts]->type = strtok(NULL, " ");
+                mounts[num_mounts]->data = strtok(NULL, " ");
+                num_mounts++;
             case 0: /* other valid flag */
                 break;
             default:

@@ -64,7 +64,7 @@ struct mount_t {
 };
 
 
-static struct mount_t mounts[] = {
+static struct mount_t default_mounts[] = {
     /* See RMK-1062 for explanation of devpts modes. */
     { "/dev/pts", "/dev/pts", "devpts", "mode=620,gid=5" },
     { "/proc", "/proc", "proc", NULL },
