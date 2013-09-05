@@ -58,6 +58,9 @@ $(generated_files) : % : %.in $(TOPDIR)/Make.defs $(TOPDIR)/Makefile
 	    -e 's^@version@^$(VERSION)^g' \
 	    -e 's^@bindir@^$(bindir)^g' \
 	    -e 's^@sbindir@^$(sbindir)^g' \
+	    -e 's^@lockdir@^$(lockdir)^g' \
+	    -e 's^@logdir@^$(logdir)^g' \
+	    -e 's^@confdir@^$(confdir)^g' \
 	    -e 's^@sysconfdir@^$(sysconfdir)^g' $< > $@
 
 dist: $(dist_files) default-dist

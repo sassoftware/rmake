@@ -51,6 +51,9 @@ export sitedir = $(libdir)/python$(PYVER)/site-packages/
 export rmakedir = $(sitedir)/rmake
 export rmakelibdir = $(libdir)/rmake
 export rmakelibexecdir = $(libexecdir)/rmake
+export confdir = /etc/rmake
+export lockdir = /var/run/rmake
+export logdir = /var/log/rmake
 export initdir = /etc/init.d
 export sysconfdir = /etc/sysconfig
 
