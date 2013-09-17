@@ -571,10 +571,11 @@ class rMakeChroot(ConaryBasedChroot):
 
 
 class ExistingChroot(rMakeChroot):
-    def __init__(self, rootPath, logger, chrootHelperPath):
+    def __init__(self, rootPath, logger, chrootHelperPath, serverCfg):
         self.root = rootPath
         self.logger = logger
         self.chrootHelperPath = chrootHelperPath
+        self.serverCfg = serverCfg
         self.chrootFingerprint = None
         self.lockFile = None
         rootfactory.BasicChroot.__init__(self)

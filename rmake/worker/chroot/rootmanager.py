@@ -254,7 +254,7 @@ class ChrootManager(object):
                 targetArch = None
 
         chroot = rootfactory.ExistingChroot(chrootPath, self.logger,
-                                            self.chrootHelperPath)
+                self.chrootHelperPath, self.serverCfg)
         chrootServer = rMakeChrootServer(chroot, targetArch=targetArch,
                 chrootQueue=self.queue, useTmpfs=self.serverCfg.useTmpfs,
                 buildLogPath=None, reuseRoots=True,
@@ -286,7 +286,7 @@ class ChrootManager(object):
             chrootPath = os.path.realpath(chrootPath)
             assert(os.path.dirname(chrootPath) == self.baseDir)
         chroot = rootfactory.ExistingChroot(chrootPath, self.logger,
-                                             self.chrootHelperPath)
+                self.chrootHelperPath, self.serverCfg)
         chroot.clean(chrootPath)
         self.queue.deleteChroot(chrootPath)
 
