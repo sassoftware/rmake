@@ -36,7 +36,6 @@ from conary.lib import log
 from conary.lib import sha1helper
 from conary.lib import util
 from conary_test.acltest import AuthorizationServer, PasswordHttpRequests
-from conary_test import rephelp
 from testrunner import testhelp
 from testutils import mock
 from testutils import sqlharness
@@ -63,6 +62,7 @@ from rmake.server import repos
 from rmake.server import server
 from rmake.server import servercfg
 from rmake_test import mockrbuilder
+from rmake_test import rephelp_old as rephelp
 from rmake_test import resources
 
 
