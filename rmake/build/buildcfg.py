@@ -324,15 +324,16 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
             self.user.extend(serverConfig.reposUser)
 
     def useConaryConfig(self, conaryConfig):
+        if hasattr(self, '_values'):
+            # Conary >= 2.5 checks the value for us
+            isDefault = lambda cfg: cfg.isDefault(key)
+        else:
+            # Conary < 2.5 does not
+            isDefault = lambda cfg: cfg.isDefault(key) and cfg[key] == cfg.getDefaultValue(key)
         def _shouldOverwrite(key, current, new):
             if key not in new:
                 return False
-            if (current.isDefault(key) and
-                current[key] == current.getDefaultValue(key) and
-               (not new.isDefault(key) or
-                new[key] != new.getDefaultValue(key))):
-                return True
-            return False
+            return isDefault(current) and not isDefault(new)
         if self.strictMode:
             if not conaryConfig:
                 conaryConfig = conarycfg.ConaryConfiguration(False)
