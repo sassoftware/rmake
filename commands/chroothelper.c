@@ -110,6 +110,37 @@ switch_to_uid_gid(int uid, int gid) {
 
 
 static int
+mkdir_chain(char *path) {
+    char *ptr = path;
+    char delim;
+    if (*ptr == '/') {
+        /* Skip root slash */
+        ptr++;
+    }
+    while (1) {
+        while (*ptr && *ptr != '/') {
+            ptr++;
+        }
+        delim = *ptr;
+        *ptr = 0;
+        if (mkdir(path, 0777)) {
+            if (errno != EEXIST) {
+                fprintf(stderr, "ERROR: failed to create %s\n", path);
+                perror("mkdir");
+                *ptr = delim;
+                return 1;
+            }
+        }
+        *ptr++ = delim;
+        if (delim == 0) {
+            break;
+        }
+    }
+    return 0;
+}
+
+
+static int
 mount_dir(const char *chrootDir, struct mount_t opts) {
     int rc, flags;
     struct stat st;
@@ -125,16 +156,8 @@ mount_dir(const char *chrootDir, struct mount_t opts) {
     }
     if (opt_verbose)
         printf("mount %s -> %s (type %s)\n", opts.from, tempPath, opts.type);
-    /* check destination directory exists */
-    rc = stat(tempPath, &st);
-    if (rc == -1) {
-        if (mkdir(tempPath, 0777) != 0) {
-            fprintf(stderr, "ERROR: %s does not exist and could not be created:\n", tempPath);
-            perror("mkdir");
-            return 1;
-        }
-    } else if (!S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "ERROR: %s is not a directory\n", tempPath);
+    /* make destination directory */
+    if (mkdir_chain(tempPath)) {
         return 1;
     }
     if (opts.data != NULL && strcmp(opts.data, "bind") == 0) {
