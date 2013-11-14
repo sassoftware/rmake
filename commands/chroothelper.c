@@ -43,6 +43,7 @@
 #include <grp.h>
 #include <pwd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -143,7 +144,6 @@ mkdir_chain(char *path) {
 static int
 mount_dir(const char *chrootDir, struct mount_t opts) {
     int rc, flags;
-    struct stat st;
     char tempPath[PATH_MAX];
 
     rc = snprintf(tempPath, PATH_MAX, "%s%s", chrootDir, opts.to);
@@ -873,6 +873,16 @@ assert_correct_perms(const char * chrootDir) {
     return 0;
 }
 
+
+static char *
+strdup2(char *src) {
+    if (src == NULL) {
+        return NULL;
+    }
+    return strdup(src);
+}
+
+
 static void
 usage(char *progname)
 {
@@ -937,11 +947,12 @@ main(int argc, char **argv)
                 opt_verbose++;
                 break;
             case 'e':
+                mounts = realloc(mounts, sizeof(void*) * (num_mounts + 1));
                 mounts[num_mounts] = malloc(sizeof(struct mount_t));
-                mounts[num_mounts]->from = strtok(optarg, " ");
-                mounts[num_mounts]->to = strtok(NULL, " ");
-                mounts[num_mounts]->type = strtok(NULL, " ");
-                mounts[num_mounts]->data = strtok(NULL, " ");
+                mounts[num_mounts]->from = strdup2(strtok(optarg, " "));
+                mounts[num_mounts]->to = strdup2(strtok(NULL, " "));
+                mounts[num_mounts]->type = strdup2(strtok(NULL, " "));
+                mounts[num_mounts]->data = strdup2(strtok(NULL, " "));
                 num_mounts++;
             case 0: /* other valid flag */
                 break;
