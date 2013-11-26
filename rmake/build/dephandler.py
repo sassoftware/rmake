@@ -152,8 +152,9 @@ class DependencyBasedBuildState(AbstractBuildState):
         are buildable and also, there dependency relationships.
     """
 
-    def __init__(self, sourceTroves, specialTroves, logger):
+    def __init__(self, sourceTroves, specialTroves, logger, dumbMode=False):
         self.logger = logger
+        self.dumbMode = dumbMode
         self.trovesByPackage = {}
         self.buildReqTroves = {}
         self.groupsByNameVersion = {}
@@ -307,7 +308,7 @@ class DependencyBasedBuildState(AbstractBuildState):
 
 
     def dependsOn(self, trove, provTrove, req):
-        if trove == provTrove:
+        if self.dumbMode or trove == provTrove:
             return
         self.depGraph.addEdge(trove, provTrove, req)
 
@@ -317,7 +318,7 @@ class DependencyBasedBuildState(AbstractBuildState):
 
 
     def hardDependencyOn(self, trove, provTrove, req):
-        if trove == provTrove:
+        if self.dumbMode or trove == provTrove:
             return
         self.hardDepGraph.addEdge(trove, provTrove, req)
 
@@ -447,7 +448,7 @@ class DependencyHandler(object):
     def __init__(self, statusLog, logger, buildTroves, specialTroves,
             logDir=None, dumbMode=False, resolverCachePath=None):
         self.depState = DependencyBasedBuildState(buildTroves, specialTroves,
-                                                  logger)
+                logger, dumbMode=dumbMode)
         self.logger = logger
         self.logDir = logDir
         self.dumbMode = dumbMode
