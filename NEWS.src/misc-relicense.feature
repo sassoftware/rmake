@@ -1,1 +1,0 @@
-rMake is now published under the Apache License version 2.0

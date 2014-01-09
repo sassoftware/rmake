@@ -1,3 +1,17 @@
+Changes in 2.1.0:
+  o New Features:
+    * Improved initscripts for rmake and rmake-node
+    * rMake is now published under the Apache License version 2.0
+
+  o Bug Fixes:
+    * Corrected a regression from the previous release that caused
+      builds to randomly fail with a temporary table error. (RMK-1087)
+    * Fixed "AF_UNIX path too long" error when building a package with a
+      very long name (RMK-1090)
+    * Added compatibility with config changes for Conary 2.5
+    * Improved compatibility with "usrmerge" Linux distributions
+    * Fixed isolateTroves option usually not having any effect
+
 Changes in 2.0.10:
   o New Features:
     * Processes remaining inside of a build chroot are now forcibly
