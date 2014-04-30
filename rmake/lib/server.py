@@ -178,26 +178,19 @@ class Server(object):
         signal.signal(signal.SIGTERM, self._signalHandler)
         signal.signal(signal.SIGINT, self._signalHandler)
 
-    def _collectChild(self, pid):
-        try:
-            pid, status = os.waitpid(pid, 0)
-        except OSError, err:
-            if err.errno in (errno.ESRCH, errno.ECHILD):
-                pid = None
-        if pid:
-            self._try('pidDied', self._pidDied, pid, status)
-
-
     def _collectChildren(self):
-        try:
-            pid, status = os.waitpid(-1, os.WNOHANG)
-        except OSError, err:
-            if err.errno != errno.ECHILD:
-                raise
+        while True:
+            try:
+                pid, status = os.waitpid(-1, os.WNOHANG)
+            except OSError as err:
+                if err.errno != errno.ECHILD:
+                    raise
+                else:
+                    pid = None
+            if pid:
+                self._try('pidDied', self._pidDied, pid, status)
             else:
-                pid = None
-        if pid:
-            self._try('pidDied', self._pidDied, pid, status)
+                break
 
     def _getExitMessage(self, pid, status, name=None):
         if name is None:
@@ -216,8 +209,6 @@ class Server(object):
         # We may want to check for failure here, but that is really
         # an odd case, the child process should have handled its own
         # logging.
-        exitRc = os.WEXITSTATUS(status)
-        signalRc = os.WTERMSIG(status)
         if status:
             self.warning(self._getExitMessage(pid, status, name))
         self._pids.pop(pid, None)
