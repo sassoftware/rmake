@@ -15,10 +15,11 @@
 #
 
 
+TOPDIR=../..
 python_files = *.py
 dist_files = Makefile $(python_files) osutil.c pycap.c pycompat.h
 so_targets = osutil.so pycap.so
-PY_CFLAGS = $(CFLAGS) -I/usr/include/python$(PYVER) -g -Wall -fPIC
+PY_CFLAGS = $(CFLAGS) -I/usr/include/python$(PYVER)
 PY_LDFLAGS = $(LDFLAGS) -shared -rdynamic
 
 all: default-all $(so_targets)
@@ -32,9 +33,9 @@ install: all pyfiles-install $(so_targets)
 	install -m0755 $(so_targets) $(DESTDIR)$(sitedir)/$(DIR)/
 
 %.o : %.c
-	gcc $(PY_CFLAGS) -c -o $@ $<
+	$(CC) $(PY_CFLAGS) -c -o $@ $<
 %.so : %.o
-	gcc $(PY_LDFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(PY_LDFLAGS) -o $@ $^ $(LIBS)
 
 # Source requirements (headers)
 pycapmodule.o osutil.o osutil_setproctitle.o: pycompat.h
@@ -45,5 +46,5 @@ osutil.so: LIBS = -ldl
 pycap.so: LIBS = -lcap
 
 
-
-include ../../Make.rules
+include $(TOPDIR)/Make.rules
+include $(TOPDIR)/Make.defs

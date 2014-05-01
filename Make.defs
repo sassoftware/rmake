@@ -58,3 +58,5 @@ export initdir = /etc/init.d
 export sysconfdir = /etc/sysconfig
 
 export VERSION
+
+CFLAGS = -O2 -Wall -Wextra -Wno-unused -g -fPIC

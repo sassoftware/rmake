@@ -57,7 +57,7 @@ chroothelper.h: chroothelper.h.in ../Make.defs
 	$< > $@
 
 chroothelper: chroothelper.c chroothelper.h config.h
-	gcc -Wall -O2 -g -o chroothelper chroothelper.c -lcap
+	$(CC) $(CFLAGS) -o $@ chroothelper.c -lcap
 
 install-mkdirs: install-client-mkdirs
 	mkdir -p $(DESTDIR)$(sbindir)

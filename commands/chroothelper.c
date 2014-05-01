@@ -42,11 +42,13 @@
 #include <getopt.h>
 #include <grp.h>
 #include <pwd.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include <linux/sched.h>
 #include <linux/types.h>
 #include <sys/types.h>
 #include <sys/capability.h>
@@ -69,8 +71,19 @@
 /* global option for verbose execution */
 static int opt_verbose = 0;
 static char conary_interpreter[PATH_MAX];
-static int num_mounts = 0;
+static unsigned num_mounts = 0;
 static struct mount_t **mounts;
+static int opt_clean = 0; /* set if we need to clean */
+static int opt_unmount = 0; /* set if we need to unmount only */
+static int opt_tmpfs = 0; /* set if we are using tmpfs */
+static int opt_noChrootUser = 0; /* set if we should not use the chroot user
+                                    but instead stay as the rmake user.
+                                    (useful for debugging) */
+static int opt_noTagScripts = 0; /* set if we should not run tag scripts */
+static int opt_chroot_caps = 0; /* set if caps should be set from the chroot
+                                   contents */
+static const char *chrootDir;
+static const char *socketPath;
 
 
 static struct passwd *
@@ -142,7 +155,7 @@ mkdir_chain(char *path) {
 
 
 static int
-mount_dir(const char *chrootDir, struct mount_t opts) {
+mount_dir(struct mount_t opts) {
     int rc, flags;
     char tempPath[PATH_MAX];
 
@@ -175,7 +188,7 @@ mount_dir(const char *chrootDir, struct mount_t opts) {
 
 
 static int
-do_chroot(const char * chrootDir) {
+do_chroot(void) {
     /* Enter in chroot and cd / */
     if (opt_verbose)
 	printf("chroot %s\n", chrootDir);
@@ -211,24 +224,23 @@ umount_quiet(const char *path) {
  * chroot_kill_once: kill all processes under the given root
  */
 static int
-chroot_kill_once(const char *root, int signum) {
+chroot_kill_once(int signum) {
     DIR *procptr;
     struct dirent *de;
     char prefix[PATH_MAX];
     char namebuf[PATH_MAX], linkbuf[PATH_MAX];
     ssize_t n;
     size_t plen;
-    unsigned long pid;
-    pid_t mypid;
+    pid_t pid, mypid;
     int killed = 0;
 
     /* make a version of root with trailing slash */
-    plen = strlen(root);
+    plen = strlen(chrootDir);
     if (plen > PATH_MAX - 2) {
         fprintf(stderr, "error: chroot path too long!\n");
         return -1;
     }
-    strcpy(prefix, root);
+    strcpy(prefix, chrootDir);
     prefix[plen] = '/';
     plen++;
     prefix[plen] = '\0';
@@ -255,11 +267,11 @@ chroot_kill_once(const char *root, int signum) {
             continue;
         }
         linkbuf[n] = '\0';
-        if (strcmp(linkbuf, root) /* exact match */
+        if (strcmp(linkbuf, chrootDir) /* exact match */
                 && strncmp(linkbuf, prefix, plen)) { /* prefix match */
             continue;
         }
-        if (sscanf(de->d_name, "%lu", &pid) != 1) {
+        if (sscanf(de->d_name, "%d", &pid) != 1) {
             /* Not an integer, how strange! */
             continue;
         }
@@ -274,7 +286,7 @@ chroot_kill_once(const char *root, int signum) {
 
 
 static int
-chroot_kill(const char *root) {
+chroot_kill(void) {
     int i, rc, signum;
     for (i = 0; i < 15; i++) {
         if (i == 0) {
@@ -285,7 +297,7 @@ chroot_kill(const char *root) {
             signum = 0;
         }
         if (signum) {
-            rc = chroot_kill_once(root, signum);
+            rc = chroot_kill_once(signum);
             if (rc < 0) {
                 return -1;
             } else if (rc == 0) {
@@ -308,9 +320,9 @@ chroot_kill(const char *root) {
  *
  *********************************************************/
 static int
-unmountchroot(const char * chrootDir, int opt_clean) {
+unmountchroot(int opt_clean) {
     char childPath[PATH_MAX];
-    int i;
+    unsigned i;
     int rc;
     uid_t myUid;
     pid_t pid;
@@ -334,12 +346,12 @@ unmountchroot(const char * chrootDir, int opt_clean) {
     chroot_gid = chrootent->pw_gid;
 
     /* Obliterate any processes still hanging out in the chroot */
-    if (chroot_kill(chrootDir)) {
+    if (chroot_kill()) {
         return -1;
     }
 
     /*enter chroot */
-    rc = do_chroot(chrootDir);
+    rc = do_chroot();
     if (rc != 0) {
         return rc;
     }
@@ -463,7 +475,7 @@ unmountchroot(const char * chrootDir, int opt_clean) {
 /* set_chroot_caps: Set capabilities on files in the chroot.
  */
 static int
-set_chroot_caps(const char *chrootDir) {
+set_chroot_caps(void) {
 
 #ifndef _HAVE_CAP_SET_FILE
     fprintf(stderr, "set_chroot_caps: cap_set_file unavaliable\n");
@@ -617,10 +629,9 @@ get_conary_interpreter() {
  *********************************************************/
 
 static int
-enter_chroot(const char * chrootDir, const char * socketPath, int useTmpfs,
-        int useChrootUser, int runTagScripts, int chrootCaps) {
+enter_chroot(void) {
     cap_t cap;
-    int i;
+    unsigned i;
     int rc;
     pid_t pid;
     const char *interp;
@@ -636,12 +647,12 @@ enter_chroot(const char * chrootDir, const char * socketPath, int useTmpfs,
 
     /* do the mounting here, since there is no mount capability */
     for(i=0; i < num_mounts; i++) {
-        if ( (rc = mount_dir(chrootDir, *mounts[i])) )
+        if ( (rc = mount_dir(*mounts[i])) )
             return rc;
     }
-    if (useTmpfs) {
+    if (opt_tmpfs) {
         struct mount_t opts = { "tmpfs", "/tmp", "tmpfs", NULL };
-        if ( (rc = mount_dir(chrootDir, opts)) )
+        if ( (rc = mount_dir(opts)) )
             return rc;
     }
 
@@ -697,8 +708,8 @@ enter_chroot(const char * chrootDir, const char * socketPath, int useTmpfs,
     umask(0002);
 
     /* set capabilities on files as directed, if directed */
-    if (chrootCaps) {
-        if (set_chroot_caps(chrootDir)) {
+    if (opt_chroot_caps) {
+        if (set_chroot_caps()) {
             fprintf(stderr, "ERROR: could not set chroot capabilities\n");
             return -1;
         }
@@ -746,8 +757,8 @@ enter_chroot(const char * chrootDir, const char * socketPath, int useTmpfs,
     }
 
     /* chroot, then run tag scripts, then switch to chroot uid */
-    do_chroot(chrootDir);
-    if (runTagScripts) {
+    do_chroot();
+    if (!opt_noTagScripts) {
         pid = fork();
         if (pid == 0) {
             /* run with the environment set up inside the shell */
@@ -777,7 +788,7 @@ enter_chroot(const char * chrootDir, const char * socketPath, int useTmpfs,
         }
     }
 
-    if (useChrootUser && switch_to_uid_gid(chroot_uid, chroot_gid)) {
+    if (!opt_noChrootUser && switch_to_uid_gid(chroot_uid, chroot_gid)) {
         fprintf(stderr, "ERROR: can not assume %s privileges\n", CHROOT_USER);
         return -1;
     }
@@ -800,8 +811,9 @@ enter_chroot(const char * chrootDir, const char * socketPath, int useTmpfs,
     return 1;
 }
 
+
 static int
-assert_correct_perms(const char * chrootDir) {
+assert_correct_perms(void) {
     char parentDir[PATH_MAX];
     struct passwd * pwent;
     uid_t rmake_uid;
@@ -893,21 +905,9 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-    int rc, i;
-
-    int opt_clean = 0; /* set if we need to clean */
-    int opt_unmount = 0; /* set if we need to unmount only */
-    int opt_tmpfs = 0; /* set if we are using tmpfs */
-    int opt_noChrootUser = 0; /* set if we should not use the chroot user 
-                                 but instead stay as the rmake user.
-                                 (useful for debugging)
-                               */
-    int opt_noTagScripts = 0; /* set if we should not run tag scripts */
-    int opt_chroot_caps = 0; /* set if caps should be set from the chroot
-                                contents */
-    char * archname = NULL;
-    char * chrootDir = NULL;
-    char * socketPath = NULL;
+    int rc;
+    unsigned i;
+    char *archname = NULL;
 
     num_mounts = sizeof(default_mounts) / sizeof(struct mount_t);
     mounts = malloc(sizeof(void*) * num_mounts);
@@ -993,13 +993,13 @@ main(int argc, char **argv)
     }
 
     /* Do permissions checks - make sure everything is sane */
-    rc = assert_correct_perms(chrootDir);
+    rc = assert_correct_perms();
     if (rc != 0) {
         fprintf(stderr, "permissions check failed\n");
         return rc;
     }
     if (opt_clean || opt_unmount)
-	return unmountchroot(chrootDir, opt_clean);
+	return unmountchroot(opt_clean);
 
     /* check if we need to do a 32bit setarch */
     if (archname) {
@@ -1032,8 +1032,7 @@ main(int argc, char **argv)
 	}
     }
     /* finally, start the work */
-    return enter_chroot(chrootDir, socketPath, opt_tmpfs, !opt_noChrootUser,
-            !opt_noTagScripts, opt_chroot_caps);
+    return enter_chroot();
 }
 
 /* vim: set ts=8 sts=4 sw=4 expandtab : */
