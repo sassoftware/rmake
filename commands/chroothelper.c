@@ -167,8 +167,9 @@ mount_dir(struct mount_t opts) {
         perror("snprintf");
         return 1;
     }
-    if (opt_verbose)
+    if (opt_verbose) {
         printf("mount %s -> %s (type %s)\n", opts.from, tempPath, opts.type);
+    }
     /* make destination directory */
     if (mkdir_chain(tempPath)) {
         return 1;
@@ -190,8 +191,9 @@ mount_dir(struct mount_t opts) {
 static int
 do_chroot(void) {
     /* Enter in chroot and cd / */
-    if (opt_verbose)
-	printf("chroot %s\n", chrootDir);
+    if (opt_verbose) {
+        printf("chroot %s\n", chrootDir);
+    }
     if (-1 == chroot(chrootDir)) {
         perror("chroot");
         return 1;
@@ -209,12 +211,14 @@ do_chroot(void) {
  */
 static int
 umount_quiet(const char *path) {
-    if (!umount(path))
+    if (!umount(path)) {
         return 0;
+    }
 
-    if (errno == ENOENT || errno == EINVAL)
+    if (errno == ENOENT || errno == EINVAL) {
         /* Not a file, or not mounted */
         return 0;
+    }
 
     return -1;
 }
@@ -334,8 +338,9 @@ unmountchroot(int opt_clean) {
     gid_t chroot_gid;
 
     char * tmpDirs[] = { "/tmp", "/var/tmp" };
-    if (opt_verbose)
-	printf("unmounting/cleaning %s\n", chrootDir);
+    if (opt_verbose) {
+        printf("unmounting/cleaning %s\n", chrootDir);
+    }
 
     /* get chroot user uid/gid from outside the chroot */
     chrootent = get_user_entry(CHROOT_USER);
@@ -365,8 +370,9 @@ unmountchroot(int opt_clean) {
             perror("umount");
         }
     }
-    if (opt_verbose)
+    if (opt_verbose) {
         printf("umount %s\n", "/tmp");
+    }
     if (umount_quiet("/tmp")) {
         perror("umount /tmp");
     }
@@ -374,22 +380,26 @@ unmountchroot(int opt_clean) {
     /* We only want to remove files owned by chrootuid, everything
      * else we should be able to delete elsewhere */
     rc = switch_to_uid_gid(chroot_uid, chroot_gid);
-    if (rc)
-	return rc;
-    if (!opt_clean)
+    if (rc) {
+        return rc;
+    }
+    if (!opt_clean) {
         return 0;
+    }
 
     myUid = getuid();
-    if (opt_verbose)
-	printf("deleting temporary directories... uid=%d\n", myUid);
+    if (opt_verbose) {
+        printf("deleting temporary directories... uid=%d\n", myUid);
+    }
 
     for(i = 0; i < sizeof(tmpDirs) / sizeof(tmpDirs[0]); i++) {
         errno = 0;
         if (NULL == (dir_h = opendir(tmpDirs[i]))) {
             continue;
         }
-	if (opt_verbose)
-	    printf("deleting files in %s\n", tmpDirs[i]);
+        if (opt_verbose) {
+            printf("deleting files in %s\n", tmpDirs[i]);
+        }
 
         while ((dirent_h = readdir(dir_h))) {
             if ((strcmp(dirent_h->d_name, ".") == 0) ||
@@ -398,8 +408,9 @@ unmountchroot(int opt_clean) {
             }
             rc = snprintf(childPath, PATH_MAX, "%s/%s",
                           tmpDirs[i], dirent_h->d_name);
-            if (opt_verbose)
+            if (opt_verbose) {
                 printf("  deleting %s\n", childPath);
+            }
             if ((rc > PATH_MAX) || (rc < 0)) {
                 /* silently ignore paths that are too long - this is
                    not a major deal */
@@ -410,8 +421,9 @@ unmountchroot(int opt_clean) {
                 continue;
             }
             if (statInfo.st_uid != myUid) {
-                if (opt_verbose)
+                if (opt_verbose) {
                     fprintf(stderr, "owned by %d, not %d\n", statInfo.st_uid, myUid);
+                }
                 /* we don't own this file, we can't remove it. */
                 continue;
             }
@@ -439,8 +451,9 @@ unmountchroot(int opt_clean) {
         }
     }
 
-    if (opt_verbose)
+    if (opt_verbose) {
         printf("deleting other files owned by  uid=%d\n", myUid);
+    }
     pid = fork();
     if (pid == 0) {
         execl(BUSYBOX, "busybox",  "sh", "-c",
@@ -567,8 +580,9 @@ set_chroot_caps(void) {
     }
 
 end:
-    if (caps != NULL)
+    if (caps != NULL) {
         munmap((void *)caps, size);
+    }
     close(caps_fd);
     return rv;
 
@@ -647,32 +661,37 @@ enter_chroot(void) {
 
     /* do the mounting here, since there is no mount capability */
     for(i=0; i < num_mounts; i++) {
-        if ( (rc = mount_dir(*mounts[i])) )
+        if ( (rc = mount_dir(*mounts[i])) ) {
             return rc;
+        }
     }
     if (opt_tmpfs) {
         struct mount_t opts = { "tmpfs", "/tmp", "tmpfs", NULL };
-        if ( (rc = mount_dir(opts)) )
+        if ( (rc = mount_dir(opts)) ) {
             return rc;
+        }
     }
 
 
     pwent = get_user_entry(RMAKE_USER);
-    if (pwent == NULL)
+    if (pwent == NULL) {
         return -1;
+    }
     chroot_super_uid = pwent->pw_uid;
     chroot_super_gid = pwent->pw_gid;
     pwent = get_user_entry(CHROOT_USER);
-    if (pwent == NULL)
+    if (pwent == NULL) {
         return -1;
+    }
     chroot_uid = pwent->pw_uid;
     chroot_gid = pwent->pw_gid;
 
     /* we need to allow creation of 666 devices */
     umask(0);
     /* make sure we create all nodes as root.root */
-    if ((rc = switch_to_uid_gid(0, 0)))
+    if ((rc = switch_to_uid_gid(0, 0))) {
         return rc;
+    }
     /* mknod here */
     for(i=0; i < (sizeof(devices) / sizeof(devices[0])); i++) {
         struct devinfo_t device = devices[i];
@@ -685,8 +704,9 @@ enter_chroot(void) {
             perror("snprintf");
             return 1;
         }
-        if (opt_verbose)
+        if (opt_verbose) {
             printf("creating device %s\n", tempPath);
+        }
 
         /* Some package managers (cough, RPM) make empty files when they can't
          * create the actual device nodes.
@@ -719,8 +739,8 @@ enter_chroot(void) {
     prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
 
     if (switch_to_uid_gid(chroot_super_uid, chroot_super_gid)) {
-	fprintf(stderr, "ERROR: can not assume %s privileges\n", RMAKE_USER);
-	return -1;
+        fprintf(stderr, "ERROR: can not assume %s privileges\n", RMAKE_USER);
+        return -1;
     }
 
     /* also initgroups here */
@@ -747,8 +767,9 @@ enter_chroot(void) {
             perror("snprintf");
             return 1;
         }
-	if (opt_verbose)
-	    printf("creating symlink: %s -> %s\n", tempPath, symlinks[i].to);
+        if (opt_verbose) {
+            printf("creating symlink: %s -> %s\n", tempPath, symlinks[i].to);
+        }
         unlink(tempPath);
         if(-1 == symlink(symlinks[i].to, tempPath)) {
             perror("symlink");
@@ -804,8 +825,9 @@ enter_chroot(void) {
         fprintf(stderr, "ERROR: command too long\n");
         return 1;
     }
-    if (opt_verbose)
-	printf("executing: %s\n", command);
+    if (opt_verbose) {
+        printf("executing: %s\n", command);
+    }
     execle("/bin/sh", "/bin/sh", "-lc", command, NULL, env);
     perror("execl");
     return 1;
@@ -822,8 +844,9 @@ assert_correct_perms(void) {
     int copied;
 
     pwent = get_user_entry(RMAKE_USER);
-    if (pwent == NULL)
+    if (pwent == NULL) {
         return 1;
+    }
     rmake_uid = pwent->pw_uid;
     rmake_gid = pwent->pw_gid;
 
@@ -917,23 +940,24 @@ main(int argc, char **argv)
     }
 
     struct option main_options[] = {
-	{"tmpfs", no_argument, &opt_tmpfs, 1},
-	{"no-chroot-user", no_argument, &opt_noChrootUser, 1},
-	{"no-tag-scripts", no_argument, &opt_noTagScripts, 1},
-    {"chroot-caps", no_argument, &opt_chroot_caps, 1},
-    {"extra-mount", required_argument, NULL, 'e'},
-	{"clean", no_argument, &opt_clean, 1},
-	{"unmount", no_argument, &opt_unmount, 1},
-	{"arch", required_argument, NULL, 'a'},
-	{"help", no_argument, NULL, 'h'},
-	{"verbose", no_argument, &opt_verbose, 1},
-	{0, 0, 0, 0}
+        {"tmpfs", no_argument, &opt_tmpfs, 1},
+        {"no-chroot-user", no_argument, &opt_noChrootUser, 1},
+        {"no-tag-scripts", no_argument, &opt_noTagScripts, 1},
+        {"chroot-caps", no_argument, &opt_chroot_caps, 1},
+        {"extra-mount", required_argument, NULL, 'e'},
+        {"clean", no_argument, &opt_clean, 1},
+        {"unmount", no_argument, &opt_unmount, 1},
+        {"arch", required_argument, NULL, 'a'},
+        {"help", no_argument, NULL, 'h'},
+        {"verbose", no_argument, &opt_verbose, 1},
+        {0, 0, 0, 0}
     };
 
     while (1) {
         rc = getopt_long(argc, argv, "a:cehv", main_options, NULL);
-        if (rc == -1)
+        if (rc == -1) {
             break;
+        }
 
         /* parse options */
         switch(rc) {
@@ -964,14 +988,14 @@ main(int argc, char **argv)
 
     /* grab the requested chroot dir */
     if (optind < argc) {
-	if (strlen(argv[optind]) >= PATH_MAX) {
-	    usage(argv[0]);
-	    return -2;
-	}
-	chrootDir = strndup(argv[optind++], PATH_MAX);
+        if (strlen(argv[optind]) >= PATH_MAX) {
+            usage(argv[0]);
+            return -2;
+        }
+        chrootDir = strndup(argv[optind++], PATH_MAX);
     } else {
-	usage(argv[0]);
-	return -1;
+        usage(argv[0]);
+        return -1;
     }
     /* grab the requested socket path */
     if (!(opt_clean || opt_unmount)) {
@@ -988,8 +1012,8 @@ main(int argc, char **argv)
     }
     /* we can only have one path as an arg */
     if (optind != argc) {
-	usage(argv[0]);
-	return -1;
+        usage(argv[0]);
+        return -1;
     }
 
     /* Do permissions checks - make sure everything is sane */
@@ -998,38 +1022,41 @@ main(int argc, char **argv)
         fprintf(stderr, "permissions check failed\n");
         return rc;
     }
-    if (opt_clean || opt_unmount)
-	return unmountchroot(opt_clean);
+    if (opt_clean || opt_unmount) {
+        return unmountchroot(opt_clean);
+    }
 
     /* check if we need to do a 32bit setarch */
     if (archname) {
-	if (
+        if (
 #if defined(__x86_64__) || defined(__i386__)
-	    (strcmp(archname, "x86") == 0) ||
+                (strcmp(archname, "x86") == 0) ||
 #endif
 #if defined(__powerpc__) || defined(__powerpc64__)
-	    (strcmp(archname, "ppc") == 0) ||
+                (strcmp(archname, "ppc") == 0) ||
 #endif
 #if defined(__s390__) || defined(__s390x__)
-           (strcmp(archname, "s390") == 0) ||
+                (strcmp(archname, "s390") == 0) ||
 #endif
 #if defined(__sparc64__) || defined(__sparc__)
-	    (strcmp(archname, "sparc") == 0) ||
+                (strcmp(archname, "sparc") == 0) ||
 #endif
-	    (strcmp(archname, "linux32") == 0)
-	    ) {
-	    struct utsname un;
-	    if (opt_verbose)
-		printf("%s: setting arch to %s\n", argv[0], archname);
-	    rc = set_pers(PER_LINUX32);
-	    if (rc == -EINVAL) {
-		fprintf(stderr, "ERROR setting personality to %s\n", archname);
-		return 1;
-	    }
-	    uname(&un);
-	    if (opt_verbose)
-		printf("%s: changed machine personality to %s\n", argv[0], un.machine);
-	}
+                (strcmp(archname, "linux32") == 0)
+                ) {
+            struct utsname un;
+            if (opt_verbose) {
+                printf("%s: setting arch to %s\n", argv[0], archname);
+            }
+            rc = set_pers(PER_LINUX32);
+            if (rc == -EINVAL) {
+                fprintf(stderr, "ERROR setting personality to %s\n", archname);
+                return 1;
+            }
+            uname(&un);
+            if (opt_verbose) {
+                printf("%s: changed machine personality to %s\n", argv[0], un.machine);
+            }
+        }
     }
     /* finally, start the work */
     return enter_chroot();
