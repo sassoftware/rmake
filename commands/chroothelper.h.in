@@ -25,6 +25,8 @@
 #define CONARY_EXEC_PATH "/usr/bin/conary"
 #define BUSYBOX "/rbin/busybox"
 
+#define USE_NAMESPACES 1
+
 struct devinfo_t {
         char* path;
         short type;

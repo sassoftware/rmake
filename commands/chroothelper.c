@@ -82,6 +82,7 @@ static int opt_noChrootUser = 0; /* set if we should not use the chroot user
 static int opt_noTagScripts = 0; /* set if we should not run tag scripts */
 static int opt_chroot_caps = 0; /* set if caps should be set from the chroot
                                    contents */
+static int opt_unshare_net = 0;
 static const char *chrootDir;
 static const char *socketPath;
 
@@ -350,10 +351,14 @@ unmountchroot(int opt_clean) {
     chroot_uid = chrootent->pw_uid;
     chroot_gid = chrootent->pw_gid;
 
-    /* Obliterate any processes still hanging out in the chroot */
+    /* Obliterate any processes still hanging out in the chroot. If PID
+     * namespaces are enabled then this is unnecessary as they are terminated
+     * when the chrootserver exits. */
+#if USE_NAMESPACES == 0
     if (chroot_kill()) {
         return -1;
     }
+#endif
 
     /*enter chroot */
     rc = do_chroot();
@@ -643,7 +648,7 @@ get_conary_interpreter() {
  *********************************************************/
 
 static int
-enter_chroot(void) {
+enter_chroot(void *unused) {
     cap_t cap;
     unsigned i;
     int rc;
@@ -835,6 +840,63 @@ enter_chroot(void) {
 
 
 static int
+enter_chroot_unshare(void) {
+    const long stack_size = 2*1024*1024;
+    void *stack;
+    int flags = SIGCHLD;
+    int pid, pid2, status;
+
+    stack = mmap(NULL, stack_size, PROT_WRITE | PROT_READ,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+    if (stack == NULL) {
+        perror("mmap");
+        fprintf(stderr, "ERROR: failed to allocate stack\n");
+        return -1;
+    }
+    stack += stack_size;
+
+    flags |= CLONE_NEWNS
+        | CLONE_NEWIPC
+        | CLONE_NEWPID
+        | CLONE_NEWUTS;
+    if (opt_unshare_net) {
+        flags |= CLONE_NEWNET;
+    }
+    pid = clone(enter_chroot, stack, flags, NULL);
+    if (pid < 0) {
+        perror("clone");
+        return 1;
+    }
+
+    /* Mirror the exit status of the child process */
+    while (1) {
+        pid2 = wait(&status);
+        if (pid2 < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            perror("wait");
+            return 1;
+        }
+        if (pid2 != pid) {
+            /* huh? */
+            continue;
+        }
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            signal(WTERMSIG(status), SIG_DFL);
+            kill(getpid(), WTERMSIG(status));
+            return 1;
+        } else {
+            return 1;
+        }
+    }
+    return 1;
+}
+
+
+static int
 assert_correct_perms(void) {
     char parentDir[PATH_MAX];
     struct passwd * pwent;
@@ -940,15 +1002,18 @@ main(int argc, char **argv)
     }
 
     struct option main_options[] = {
-        {"tmpfs", no_argument, &opt_tmpfs, 1},
+        {"arch", required_argument, NULL, 'a'},
+        {"chroot-caps", no_argument, &opt_chroot_caps, 1},
+        {"clean", no_argument, &opt_clean, 1},
+        {"extra-mount", required_argument, NULL, 'e'},
+        {"help", no_argument, NULL, 'h'},
         {"no-chroot-user", no_argument, &opt_noChrootUser, 1},
         {"no-tag-scripts", no_argument, &opt_noTagScripts, 1},
-        {"chroot-caps", no_argument, &opt_chroot_caps, 1},
-        {"extra-mount", required_argument, NULL, 'e'},
-        {"clean", no_argument, &opt_clean, 1},
+        {"tmpfs", no_argument, &opt_tmpfs, 1},
         {"unmount", no_argument, &opt_unmount, 1},
-        {"arch", required_argument, NULL, 'a'},
-        {"help", no_argument, NULL, 'h'},
+#if USE_NAMESPACES
+        {"net-namespace", no_argument, &opt_unshare_net, 1},
+#endif
         {"verbose", no_argument, &opt_verbose, 1},
         {0, 0, 0, 0}
     };
@@ -1059,7 +1124,11 @@ main(int argc, char **argv)
         }
     }
     /* finally, start the work */
-    return enter_chroot();
+#if USE_NAMESPACES
+    return enter_chroot_unshare();
+#else
+    return enter_chroot(NULL);
+#endif
 }
 
 /* vim: set ts=8 sts=4 sw=4 expandtab : */
