@@ -84,6 +84,7 @@ static int opt_noTagScripts = 0; /* set if we should not run tag scripts */
 static int opt_chroot_caps = 0; /* set if caps should be set from the chroot
                                    contents */
 static int opt_unshare_net = 0;
+static enum btrfs_mode opt_btrfs = none;
 static const char *chrootDir;
 static const char *socketPath;
 
@@ -842,6 +843,7 @@ enter_chroot(void *unused) {
 
 static int
 enter_chroot_unshare(void) {
+#if USE_NAMESPACES
     const long stack_size = 2*1024*1024;
     void *stack;
     int flags = SIGCHLD;
@@ -894,6 +896,9 @@ enter_chroot_unshare(void) {
         }
     }
     return 1;
+#else
+    return enter_chroot(NULL);
+#endif
 }
 
 
@@ -980,6 +985,61 @@ assert_correct_perms(const char *destdir) {
 }
 
 
+static int
+btrfs_action(void) {
+#if USE_BTRFS
+    int rc;
+    struct passwd *pwent;
+    pid_t pid;
+
+    pwent = get_user_entry(RMAKE_USER);
+    if (pwent == NULL) {
+        fprintf(stderr, "rmake user missing\n");
+        return 1;
+    }
+    if (opt_btrfs == btrfs_snapshot) {
+        /* socketPath is the snapshot source */
+        rc = assert_correct_perms(socketPath);
+        if (rc) {
+            fprintf(stderr, "permissions check failed\n");
+            return rc;
+        }
+    }
+    pid = fork();
+    if (pid) {
+        if (-1 == waitpid(pid, &rc, 0)) {
+            perror("waitpid");
+            return 1;
+        }
+        if (rc) {
+            fprintf(stderr, "btrfs failed with status code %d\n", rc);
+            return 1;
+        }
+        if (opt_btrfs == btrfs_create || opt_btrfs == btrfs_snapshot) {
+            chown(chrootDir, pwent->pw_uid, pwent->pw_gid);
+        }
+        return 0;
+    }
+    switch (opt_btrfs) {
+        case btrfs_create:
+            execl(BTRFS, BTRFS, "subvolume", "create", chrootDir, NULL);
+            break;
+        case btrfs_delete:
+            execl(BTRFS, BTRFS, "subvolume", "delete", chrootDir, NULL);
+            break;
+        case btrfs_snapshot:
+            execl(BTRFS, BTRFS, "subvolume", "snapshot", socketPath, chrootDir, NULL);
+            break;
+        default:
+            return 1;
+    }
+    fprintf(stderr, "failed to start btrfs\n");
+    perror("execl");
+#endif
+    return 1;
+}
+
+
 static char *
 strdup2(char *src) {
     if (src == NULL) {
@@ -1012,6 +1072,11 @@ main(int argc, char **argv)
 
     struct option main_options[] = {
         {"arch", required_argument, NULL, 'a'},
+#if USE_BTRFS
+        {"btrfs-create", no_argument, (int*)&opt_btrfs, btrfs_create},
+        {"btrfs-snapshot", no_argument, (int*)&opt_btrfs, btrfs_snapshot},
+        {"btrfs-delete", no_argument, (int*)&opt_btrfs, btrfs_delete},
+#endif
         {"chroot-caps", no_argument, &opt_chroot_caps, 1},
         {"clean", no_argument, &opt_clean, 1},
         {"extra-mount", required_argument, NULL, 'e'},
@@ -1072,7 +1137,8 @@ main(int argc, char **argv)
         return -1;
     }
     /* grab the requested socket path */
-    if (!(opt_clean || opt_unmount)) {
+    if (!opt_clean && !opt_unmount
+            && opt_btrfs != btrfs_create && opt_btrfs != btrfs_delete) {
         if (optind < argc) {
             if (strlen(argv[optind]) >= PATH_MAX) {
                 usage(argv[0]);
@@ -1098,6 +1164,9 @@ main(int argc, char **argv)
     }
     if (opt_clean || opt_unmount) {
         return unmountchroot(opt_clean);
+    }
+    if (opt_btrfs != none) {
+        return btrfs_action();
     }
 
     /* check if we need to do a 32bit setarch */
@@ -1133,11 +1202,7 @@ main(int argc, char **argv)
         }
     }
     /* finally, start the work */
-#if USE_NAMESPACES
     return enter_chroot_unshare();
-#else
-    return enter_chroot(NULL);
-#endif
 }
 
 /* vim: set ts=8 sts=4 sw=4 expandtab : */
