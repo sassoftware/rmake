@@ -182,7 +182,7 @@ class Server(object):
         while True:
             try:
                 pid, status = os.waitpid(-1, os.WNOHANG)
-            except OSError as err:
+            except OSError, err:
                 if err.errno != errno.ECHILD:
                     raise
                 else:
