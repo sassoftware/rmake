@@ -41,6 +41,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <grp.h>
+#include <libgen.h>
 #include <pwd.h>
 #include <sched.h>
 #include <stdio.h>
@@ -897,8 +898,9 @@ enter_chroot_unshare(void) {
 
 
 static int
-assert_correct_perms(void) {
+assert_correct_perms(const char *destdir) {
     char parentDir[PATH_MAX];
+    char *p_parentDir;
     struct passwd * pwent;
     uid_t rmake_uid;
     gid_t rmake_gid;
@@ -931,27 +933,34 @@ assert_correct_perms(void) {
        the parent's perms are very stringent...
     */
 
-    if(-1 == stat(chrootDir, &statInfo) ) {
-        perror("stat");
-        return 0;
+    if(-1 == stat(destdir, &statInfo) ) {
+        if (errno != ENOENT) {
+            perror("stat");
+            return 1;
+        }
+        strncpy(parentDir, destdir, PATH_MAX);
+        p_parentDir = dirname(parentDir);
+    } else {
+        if ((rmake_uid != statInfo.st_uid) || (rmake_gid != statInfo.st_gid)) {
+            fprintf(stderr, "error: chroot must be owned by the rmake user and group\n");
+            return 1;
+        }
+
+        /* we need to check permissions of the chroot's real parent directory
+         * since we've created tmp dirs in the subdirectory with 1777 permissions
+         */
+
+        /* get the real parent directory of chrootDir */
+        strncpy(parentDir, destdir, PATH_MAX);
+        copied = strlen(destdir);
+        if(copied + 4 > PATH_MAX) {
+            fprintf(stderr, "error: chroot path too long\n");
+            return 1;
+        }
+        strncpy(&(parentDir[copied]), "/..", 4);
+        p_parentDir = parentDir;
     }
 
-    if ((rmake_uid != statInfo.st_uid) || (rmake_gid != statInfo.st_gid)) {
-        fprintf(stderr, "error: chroot must be owned by the rmake user and group\n");
-        return 1;
-    }
-
-    /* we need to check permissions of the chroot's real parent directory
-     * since we've created tmp dirs in the subdirectory with 1777 permissions
-     */
-
-    /* get the real parent directory of chrootDir */
-    strncpy(parentDir, chrootDir, PATH_MAX);
-    copied = strlen(chrootDir);
-    if(copied + 4 > PATH_MAX) {
-        fprintf(stderr, "error: chroot path too long\n");
-    }
-    strncpy(&(parentDir[copied]), "/..", 4);
 
     if(-1 == stat(parentDir, &statInfo)) {
         perror("stat");
@@ -1082,7 +1091,7 @@ main(int argc, char **argv)
     }
 
     /* Do permissions checks - make sure everything is sane */
-    rc = assert_correct_perms();
+    rc = assert_correct_perms(chrootDir);
     if (rc != 0) {
         fprintf(stderr, "permissions check failed\n");
         return rc;
