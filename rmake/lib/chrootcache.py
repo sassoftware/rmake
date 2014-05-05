@@ -80,6 +80,21 @@ class ChrootCacheInterface(object):
         """
         raise NotImplementedError
 
+    def createRoot(self, root):
+        """
+        Prepare a working chroot directory for install.
+        """
+        pass
+
+    def removeRoot(self, root):
+        """
+        Attempt to delete a working chroot directory.
+
+        Returns C{True} if the directory was removed, or C{False} if the caller
+        should clean it up.
+        """
+        return False
+
 
 class LocalChrootCache(ChrootCacheInterface):
     """
@@ -127,3 +142,59 @@ class LocalChrootCache(ChrootCacheInterface):
     def _fingerPrintToPath(self, chrootFingerprint):
         tar = sha1ToString(chrootFingerprint) + '.tar.gz'
         return os.path.join(self.cacheDir, tar)
+
+
+class BtrfsChrootCache(ChrootCacheInterface):
+
+    def __init__(self, cacheDir, chrootHelperPath):
+        self.cacheDir = cacheDir
+        self.chrootHelperPath = chrootHelperPath
+
+    def _callHelper(self, args):
+        args = [self.chrootHelperPath] + list(args)
+        p = subprocess.Popen(args, shell=False, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        if p.returncode:
+            msg = "Failed to invoke btrfs helper"
+            if stdout.strip():
+                msg += "\nstdout:\n" + stdout
+            if stderr.strip():
+                msg += "\nstderr:\n" + stderr
+            raise RuntimeError(msg)
+
+    def store(self, chrootFingerprint, root):
+        path = self._fingerPrintToPath(chrootFingerprint)
+        self._callHelper(["--btrfs-snapshot", path, root])
+
+    def restore(self, chrootFingerprint, root):
+        path = self._fingerPrintToPath(chrootFingerprint)
+        if os.path.isdir(root):
+            self._callHelper(["--btrfs-delete", root])
+        self._callHelper(["--btrfs-snapshot", root, path])
+
+    def remove(self, chrootFingerprint):
+        path = self._fingerPrintToPath(chrootFingerprint)
+        self._callHelper(["--btrfs-delete", path])
+
+    def hasChroot(self, chrootFingerprint):
+        path = self._fingerPrintToPath(chrootFingerprint)
+        return os.path.isdir(path)
+
+    def createRoot(self, root):
+        marker = os.path.join(root, '.btrfs')
+        if os.path.exists(marker):
+            return
+        self._callHelper(["--btrfs-create", root])
+        open(marker, 'w').close()
+
+    def removeRoot(self, root):
+        if os.path.exists(os.path.join(root, '.btrfs')):
+            self._callHelper(["--btrfs-delete", root])
+            return True
+        else:
+            return False
+
+    def _fingerPrintToPath(self, chrootFingerprint):
+        basename = sha1ToString(chrootFingerprint) + '.btrfs'
+        return os.path.join(self.cacheDir, basename)

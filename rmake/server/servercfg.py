@@ -128,13 +128,16 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
             return None
         elif self.chrootCache[0] == 'local':
             return chrootcache.LocalChrootCache(self.chrootCache[1])
+        elif self.chrootCache[0] == 'btrfs':
+            return chrootcache.BtrfsChrootCache(self.chrootCache[1],
+                    self.getChrootHelper())
         else:
             raise errors.RmakeError('unknown chroot cache type of "%s" specified' %self.chrootCache[0])
 
     def _getChrootCacheDir(self):
         if not self.chrootCache:
             return None
-        elif self.chrootCache[0] == 'local':
+        elif self.chrootCache[0] in ('local', 'btrfs'):
             return self.chrootCache[1]
         return None
 

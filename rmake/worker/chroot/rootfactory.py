@@ -111,6 +111,8 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
 
     def create(self, root):
         self.cfg.root = root
+        if self.chrootCache:
+            self.chrootCache.createRoot(self.cfg.root)
         rootfactory.BasicChroot.create(self, root)
 
     def install(self):
@@ -528,6 +530,8 @@ class rMakeChroot(ConaryBasedChroot):
 
 
     def clean(self, root, raiseError=True):
+        if not os.path.exists(root):
+            return True
         if self.canChroot():
             if not self._lock(root, fcntl.LOCK_EX):
                 self.logger.info("Not cleaning chroot because it is locked "
@@ -543,6 +547,8 @@ class rMakeChroot(ConaryBasedChroot):
                             ' to clean old chroot')
                 else:
                     return False
+        if self.chrootCache:
+            self.chrootCache.removeRoot(root)
         self.logger.debug("removing old chroot tree: %s", root)
         # First, remove the conary database
         try:
