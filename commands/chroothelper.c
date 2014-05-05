@@ -849,12 +849,43 @@ enter_chroot_unshare(void) {
     int flags = SIGCHLD;
     int pid, pid2, status;
 
+    /* In Fedora 20, the root filesystem is marked as a 'shared' mount which
+     * means that any mounts we do in the chroot namespace will be propagated
+     * back to the primary namespace. This defeats the purpose of using a mount
+     * namespace -- we want to keep everything mounted inside the chroot hidden
+     * from the primary namespace, and for those mounts to be destroyed
+     * automatically when the chroot process terminates.  To do this we need to
+     * make a private mount-point to do our chroot mounts under.  This outer
+     * bindmount will still propagate at first, but we can unmount it
+     * immediately after forking the chroot process.  To make things even more
+     * awkward, we have to bind-mount it *twice* because when we unmount the
+     * outer one it disappears from the chroot namespace and any subsequent
+     * mounts then become shared.  So we mount, make-private, then mount again
+     * so that the chroot process sits entirely on a mount that is private.
+     */
+
+    if (mount(chrootDir, chrootDir, "bind", MS_BIND, NULL)) {
+        perror("mount");
+        fprintf(stderr, "ERROR: failed to create private bindmount #1 for chroot\n");
+        return 1;
+    }
+    if (mount(chrootDir, chrootDir, "bind", MS_PRIVATE, NULL)) {
+        perror("mount");
+        fprintf(stderr, "ERROR: failed to mark private bindmount #1 for chroot\n");
+        return 1;
+    }
+    if (mount(chrootDir, chrootDir, "bind", MS_BIND, NULL)) {
+        perror("mount");
+        fprintf(stderr, "ERROR: failed to create private bindmount #2 for chroot\n");
+        return 1;
+    }
+
     stack = mmap(NULL, stack_size, PROT_WRITE | PROT_READ,
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
     if (stack == NULL) {
         perror("mmap");
         fprintf(stderr, "ERROR: failed to allocate stack\n");
-        return -1;
+        return 1;
     }
     stack += stack_size;
 
@@ -869,6 +900,17 @@ enter_chroot_unshare(void) {
     if (pid < 0) {
         perror("clone");
         return 1;
+    }
+
+    /* Now that the child namespace is active, we can unmount both temporary
+     * private bindmounts */
+    if (umount(chrootDir)) {
+        perror("umount");
+        fprintf(stderr, "ERROR: failed to release private bindmount #2 for chroot\n");
+    }
+    if (umount(chrootDir)) {
+        perror("umount");
+        fprintf(stderr, "ERROR: failed to release private bindmount #1 for chroot\n");
     }
 
     /* Mirror the exit status of the child process */
