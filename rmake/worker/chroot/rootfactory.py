@@ -477,8 +477,9 @@ class rMakeChroot(ConaryBasedChroot):
 
     def _lock(self, root, mode):
         if not self.lockFile:
-            util.mkdirChain(root)
-            self.lockFile = open(root + '/lock', 'w+')
+            parent, child = os.path.split(root)
+            path = os.path.join(parent, '.%s.lock' % child)
+            self.lockFile = open(path, 'w+')
             os.fchmod(self.lockFile.fileno(), 0666)
         try:
             fcntl.lockf(self.lockFile.fileno(), mode | fcntl.LOCK_NB)
@@ -489,9 +490,11 @@ class rMakeChroot(ConaryBasedChroot):
         else:
             return True
 
-    def _unlock(self, root):
+    def _unlock(self, root, cleanup=False):
         if not self.lockFile:
             return
+        if cleanup:
+            util.removeIfExists(self.lockFile.name)
         self.lockFile.close()
         self.lockFile = None
 
@@ -566,7 +569,7 @@ class rMakeChroot(ConaryBasedChroot):
                 ' completely died.  Please shut down rmake, kill any remaining'
                 ' rmake processes, and then retry.  If that does not work,'
                 ' please remove the old root by hand.' % root)
-        self._unlock(root)
+        self._unlock(root, cleanup=True)
         return not removeFailed
 
 
