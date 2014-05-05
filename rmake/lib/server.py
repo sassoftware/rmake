@@ -181,14 +181,19 @@ class Server(object):
     def _collectChildren(self):
         while True:
             try:
-                pid, status = os.waitpid(-1, os.WNOHANG)
+                pid, status = os.waitpid(-1,
+                        os.WNOHANG | os.WUNTRACED | os.WCONTINUED)
             except OSError, err:
                 if err.errno != errno.ECHILD:
                     raise
                 else:
                     pid = None
             if pid:
-                self._try('pidDied', self._pidDied, pid, status)
+                if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+                    self._try('pidDied', self._pidDied, pid, status)
+                # Ignore STOP/CONT. We (probably?) need to waitpid on them but
+                # don't care about the outcome because the process is still
+                # there.
             else:
                 break
 

@@ -230,7 +230,7 @@ class ChrootServer(apirpc.XMLApiServer):
     def _pidDied(self, pid, status, name=None):
         if pid == self._sessionPid:
             self._halt = True
-        apirpc.XMLApiServer._pidDied(self, pid, status, name=name)
+            apirpc.XMLApiServer._pidDied(self, pid, status, name=name)
 
     def _signalHandler(self, sigNum, frame):
         # if they rekill, we just exit
