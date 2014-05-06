@@ -20,6 +20,7 @@ Cache of chroots.
 """
 
 import errno
+import fcntl
 import os
 import subprocess
 import tempfile
@@ -165,7 +166,18 @@ class BtrfsChrootCache(ChrootCacheInterface):
 
     def store(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
-        self._callHelper(["--btrfs-snapshot", path, root])
+        lock = open(path + '.lock', 'w+')
+        try:
+            fcntl.lockf(lock.fileno(), fcntl.LOCK_NB | fcntl.LOCK_EX)
+        except IOError, err:
+            if err.errno != errno.EAGAIN:
+                raise
+            # Conflict, just do nothing
+            return
+        if not os.path.exists(path):
+            self._callHelper(["--btrfs-snapshot", path, root])
+        os.unlink(lock.name)
+        lock.close()
 
     def restore(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
