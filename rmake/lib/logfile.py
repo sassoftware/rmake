@@ -131,6 +131,11 @@ class Tee(object):
             except OSError, e:
                 pass
         try:
+            from rmake.lib import osutil
+            osutil.setproctitle('rmake logger')
+        except:
+            pass
+        try:
             BUFFER = 64 * 1024
             while True:
                 try:
