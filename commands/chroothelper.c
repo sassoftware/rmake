@@ -84,6 +84,7 @@ static int opt_noTagScripts = 0; /* set if we should not run tag scripts */
 static int opt_chroot_caps = 0; /* set if caps should be set from the chroot
                                    contents */
 static int opt_unshare_net = 0;
+static pid_t child_pid;
 static enum btrfs_mode opt_btrfs = none;
 static const char *chrootDir;
 static const char *socketPath;
@@ -841,13 +842,20 @@ enter_chroot(void *unused) {
 }
 
 
+static void
+rekill(int signum) {
+    kill(child_pid, signum);
+}
+
+
 static int
 enter_chroot_unshare(void) {
 #if USE_NAMESPACES
     const long stack_size = 2*1024*1024;
     void *stack;
     int flags = SIGCHLD;
-    int pid, pid2, status;
+    int pid2, status;
+    struct sigaction sa;
 
     /* In Fedora 20, the root filesystem is marked as a 'shared' mount which
      * means that any mounts we do in the chroot namespace will be propagated
@@ -896,8 +904,8 @@ enter_chroot_unshare(void) {
     if (opt_unshare_net) {
         flags |= CLONE_NEWNET;
     }
-    pid = clone(enter_chroot, stack, flags, NULL);
-    if (pid < 0) {
+    child_pid = clone(enter_chroot, stack, flags, NULL);
+    if (child_pid < 0) {
         perror("clone");
         return 1;
     }
@@ -913,6 +921,13 @@ enter_chroot_unshare(void) {
         fprintf(stderr, "ERROR: failed to release private bindmount #1 for chroot\n");
     }
 
+    /* Mirror signals towards us to the child process */
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = rekill;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+
     /* Mirror the exit status of the child process */
     while (1) {
         pid2 = wait(&status);
@@ -923,14 +938,17 @@ enter_chroot_unshare(void) {
             perror("wait");
             return 1;
         }
-        if (pid2 != pid) {
+        if (pid2 != child_pid) {
             /* huh? */
             continue;
         }
         if (WIFEXITED(status)) {
             return WEXITSTATUS(status);
         } else if (WIFSIGNALED(status)) {
-            signal(WTERMSIG(status), SIG_DFL);
+            sa.sa_handler = SIG_DFL;
+            sigaction(SIGTERM, &sa, NULL);
+            sigaction(SIGQUIT, &sa, NULL);
+            sigaction(SIGINT, &sa, NULL);
             kill(getpid(), WTERMSIG(status));
             return 1;
         } else {
