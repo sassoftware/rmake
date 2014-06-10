@@ -19,7 +19,7 @@ import itertools
 from conary.deps import deps
 from conary.local import deptable
 
-from conary.conaryclient import resolve
+from conary.repository import resolvemethod
 from conary.repository import trovesource
 
 from rmake.lib import flavorutil
@@ -401,9 +401,9 @@ class BuiltTroveSource(trovesource.SimpleTroveSource):
         return suggMap
 
 
-class ResolutionMesh(resolve.BasicResolutionMethod):
+class ResolutionMesh(resolvemethod.BasicResolutionMethod):
     def __init__(self, cfg, extraMethod, mainMethod):
-        resolve.BasicResolutionMethod.__init__(self, cfg, None)
+        resolvemethod.BasicResolutionMethod.__init__(self, cfg, None)
         self.extraMethod = extraMethod
         self.mainMethod = mainMethod
 
@@ -438,124 +438,6 @@ class ResolutionMesh(resolve.BasicResolutionMethod):
         self.extraMethod.searchAllVersions()
         self.mainMethod.searchAllVersions()
 
-    def selectResolutionTrove(self, requiredBy, dep, depClass,
-                              troveTups, installFlavor, affFlavorDict):
-        """
-            determine which of the given set of troveTups is the 
-            best choice for installing on this system.  Because the
-            repository didn't try to determine which flavors are best for 
-            our system, we have to filter the troves locally.  
-        """
-        #NOTE: this method should be a match exactly for the one in 
-        # conary.repository.resolvemethod for conary 1.2 and later.
-        # when we drop support for earlier conary's we can drop this method.
-        # we filter the troves in the following ways:
-        # 1. prefer troves that match affinity flavor + are on the affinity
-        # label. (And don't drop an arch)
-        # 2. fall back to troves that match the install flavor.
-
-        # If we don't match an affinity flavor + label, then use flavor
-        # preferences and flavor scoring to select the best flavor.
-        # We'll have to check 
-
-        # Within these two categories:
-        # 1. filter via flavor preferences for each trove (this may result
-        # in an older version for some troves)
-        # 2. only leave the latest version for each trove
-        # 3. pick the best flavor out of the remaining
-        affinityMatches = []
-        affinityFlavors = []
-        otherMatches = []
-        otherFlavors = []
-
-        if installFlavor is not None and not installFlavor.isEmpty():
-            flavoredList = []
-            for troveTup in troveTups:
-                label = troveTup[1].trailingLabel()
-                affTroves = affFlavorDict[troveTup[0]]
-                found = False
-                if affTroves:
-                    for affName, affVersion, affFlavor in affTroves:
-                        if affVersion.trailingLabel() != label:
-                            continue
-                        newFlavor = deps.overrideFlavor(installFlavor,
-                                                        affFlavor,
-                                            mergeType=deps.DEP_MERGE_TYPE_PREFS)
-                        # implement never drop an arch for dep resolution
-                        currentArch = deps.getInstructionSetFlavor(affFlavor)
-                        if not troveTup[2].stronglySatisfies(currentArch):
-                            continue
-                        if newFlavor.satisfies(troveTup[2]):
-                            affinityMatches.append((newFlavor, troveTup))
-                            affinityFlavors.append(troveTup[2])
-                            found = True
-                if not found and not affinityMatches:
-                    if installFlavor.satisfies(troveTup[2]):
-                        otherMatches.append((installFlavor, troveTup))
-                        otherFlavors.append(troveTup[2])
-        else:
-            otherMatches = [ (None, x) for x in troveTups ]
-            otherFlavors = [x[2] for x in troveTups]
-        if affinityMatches:
-            allFlavors = affinityFlavors
-            flavoredList = affinityMatches
-        else:
-            allFlavors = otherFlavors
-            flavoredList = otherMatches
-
-        # Now filter by flavor preferences.
-        newFlavors = []
-        if self.flavorPreferences:
-            for flavor in self.flavorPreferences:
-                for trvFlavor in allFlavors:
-                    if trvFlavor.stronglySatisfies(flavor):
-                       newFlavors.append(trvFlavor)
-                if newFlavors:
-                    break
-        if newFlavors:
-            flavoredList = [ x for x in flavoredList if x[1][2] in newFlavors ]
-
-        return self._selectMatchingResolutionTrove(requiredBy, dep,
-                                                   depClass, flavoredList)
-    def _selectMatchingResolutionTrove(self, requiredBy, dep, depClass,
-                                       flavoredList):
-        # this function should be an exact match of
-        # resolvemethod._selectMatchingResolutionTrove from conary 1.2 and 
-        # later.
-        # finally, filter by latest then score.
-        trovesByNL = {}
-        for installFlavor, (n,v,f) in flavoredList:
-            l = v.trailingLabel()
-            myTimeStamp = v.timeStamps()[-1]
-            if installFlavor is None:
-                myScore = 0
-            else:
-                # FIXME: we should cache this scoring from before.
-                myScore = installFlavor.score(f)
-
-            if (n,l) in trovesByNL:
-                curScore, curTimeStamp, curTup = trovesByNL[n,l]
-                if curTimeStamp > myTimeStamp:
-                    continue
-                if curTimeStamp == myTimeStamp:
-                    if myScore < curScore:
-                        continue
-
-            trovesByNL[n,l] = (myScore, myTimeStamp, (n,v,f))
-
-        scoredList = sorted(trovesByNL.itervalues())
-        if not scoredList:
-            return None
-        else:
-            # highest score, then latest timestamp, then name.
-            return scoredList[-1][-1]
-
-    if hasattr(resolve.BasicResolutionMethod,
-               '_selectMatchingResolutionTrove'):
-        selectResolutionTrove = resolve.BasicResolutionMethod.selectResolutionTrove
-        _selectMatchingResolutionTrove = resolve.BasicResolutionMethod._selectMatchingResolutionTrove
-
-
 
 class rMakeResolveSource(ResolutionMesh):
     """ 
@@ -575,17 +457,17 @@ class rMakeResolveSource(ResolutionMesh):
         self.repos = repos
         self.flavor = cfg.flavor
         sources = []
-        builtResolveSource = resolve.BasicResolutionMethod(cfg, None)
+        builtResolveSource = resolvemethod.BasicResolutionMethod(cfg, None)
         builtResolveSource.setTroveSource(builtTroveSource)
 
         sources = []
         if troveLists:
-            troveListSources = [resolve.DepResolutionByTroveList(cfg, None, x)
+            troveListSources = [resolvemethod.DepResolutionByTroveList(cfg, None, x)
                                  for x in troveLists]
             [ x.setTroveSource(self.repos) for x in troveListSources ]
             sources.extend(troveListSources)
 
-        mainMethod = resolve.ResolutionStack(*sources)
+        mainMethod = resolvemethod.ResolutionStack(*sources)
         flavorPreferences = self.repos._flavorPreferences
         for source in sources:
             source.setFlavorPreferences(flavorPreferences)
@@ -597,7 +479,7 @@ class rMakeResolveSource(ResolutionMesh):
 
     def setLabelPath(self, labelPath):
         if labelPath:
-            source = resolve.DepResolutionByLabelPath(self.cfg, None, labelPath)
+            source = resolvemethod.DepResolutionByLabelPath(self.cfg, None, labelPath)
             source.setTroveSource(self.repos)
             self.mainMethod.addSource(source)
 
@@ -610,18 +492,18 @@ class rMakeResolveSource(ResolutionMesh):
 
     def _resolveIntraTroveDeps(self, intraDeps):
         trovesToGet = []
-        for depSet, deps in intraDeps.iteritems():
-            for dep, troveTups in deps.iteritems():
+        for depSet, _deps in intraDeps.iteritems():
+            for dep, troveTups in _deps.iteritems():
                 trovesToGet.extend(troveTups)
         hasTroves = self.troveSource.hasTroves(trovesToGet)
         if isinstance(hasTroves, list):
             hasTroves = dict(itertools.izip(trovesToGet, hasTroves))
 
         results = {}
-        for depSet, deps in intraDeps.iteritems():
+        for depSet, _deps in intraDeps.iteritems():
             d = {}
             results[depSet] = d
-            for dep, troveTups in deps.iteritems():
+            for dep, troveTups in _deps.iteritems():
                 d[dep] = [ x for x in troveTups if hasTroves[x] ]
         return results
 
