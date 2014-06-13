@@ -462,8 +462,10 @@ class rMakeResolveSource(ResolutionMesh):
 
         sources = []
         if troveLists:
-            troveListSources = [resolvemethod.DepResolutionByTroveList(cfg, None, x)
-                                 for x in troveLists]
+            method = getattr(resolvemethod, 'DepResolutionByTroveListFast',
+                    # Conary <= 2.5.3 fallback
+                    resolvemethod.DepResolutionByTroveList)
+            troveListSources = [method(cfg, None, x) for x in troveLists]
             [ x.setTroveSource(self.repos) for x in troveListSources ]
             sources.extend(troveListSources)
 

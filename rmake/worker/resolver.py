@@ -300,11 +300,18 @@ class DependencyResolver(object):
         resolveResult.troveResolved(buildReqJobs, crossReqJobs, bootstrapJobs)
         return resolveResult
 
+    @staticmethod
+    def _getDepStateClass(troveSource, findOrdering=True, ignoreDepClasses=()):
+        assert not findOrdering
+        return DepCheckStateFast(troveSource, ignoreDepClasses)
 
     def _resolve(self, cfg, resolveResult, trove, searchSource, resolveSource,
                  installLabelPath, searchFlavor, reqs, isCross=False):
         resolveSource.setLabelPath(installLabelPath)
         client = conaryclient.ConaryClient(cfg)
+        if hasattr(deps, 'DependencyMatcher'):
+            # Conary >= 2.5.4
+            client.resolver.db.getDepStateClass = self._getDepStateClass
 
         # we allow build requirements to be matched against anywhere on the
         # install label.  Create a list of all of this trove's labels,
@@ -392,3 +399,69 @@ def _findBestSolution(trove, (name, versionSpec, flavorSpec),
     return resolveSource.selectResolutionTrove(trove, None, None,
                                                  solutions, None,
                                                  affDict)
+
+
+class DepCheckStateFast(object):
+    """
+    In-memory dependency checker suitable for rMake resolve jobs
+    """
+
+    def __init__(self, troveSource, ignoreDepClasses):
+        self.troveSource = troveSource
+        self.jobSet = set()
+        self.matcher = deps.DependencyMatcher(ignoreDepClasses)
+        self.troveReqs = {}
+
+    def setTroveSource(self, troveSource):
+        self.troveSource = troveSource
+
+    def done(self):
+        self.jobSet = set()
+        self.matcher.clear()
+        self.troveReqs = {}
+
+    def _setJobs(self, jobSet):
+        """
+        Retrieve deps for all the newly added troves in the jobset and merge
+        their provides into the dep state.
+        """
+        jobSet = set(jobSet)
+        assert not self.jobSet - jobSet
+        addedTups = set()
+        for name, oldVF, newVF, isAbs in jobSet - self.jobSet:
+            assert oldVF[0] is None and newVF[0] is not None
+            addedTups.add((name, newVF[0], newVF[1]))
+        self.jobSet = jobSet
+        if not addedTups:
+            return
+
+        addedTups = list(addedTups)
+        addedDeps = self.troveSource.getDepsForTroveList(addedTups,
+                provides=True, requires=True)
+        for tup, (provSet, reqSet) in zip(addedTups, addedDeps):
+            self.matcher.add(provSet)
+            self.troveReqs[tup] = reqSet
+
+    def depCheck(self, jobSet, linkedJobs=None, criticalJobs=None,
+            finalJobs=None, criticalOnly=False):
+        assert not criticalJobs and not finalJobs and not criticalOnly
+        self._setJobs(jobSet)
+        unsatisfiedList = []
+        for tup, reqSet in self.troveReqs.iteritems():
+            unsatisfied = self.matcher.check(reqSet)
+            if unsatisfied is not None:
+                unsatisfiedList.append((tup, unsatisfied))
+        return _CheckResult(unsatisfiedList)
+
+
+class _CheckResult(object):
+
+    def __init__(self, unsatisfiedList):
+        self.unsatisfiedList = unsatisfiedList
+        self.unresolveableList = []
+
+    def getChangeSetList(self):
+        return None
+
+    def getCriticalUpdates(self):
+        return None
