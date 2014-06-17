@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import stat
+import time
 
 #conary
 from conary import conarycfg
@@ -45,11 +46,14 @@ from rmake import compat
 from rmake import constants
 from rmake.lib import flavorutil
 from rmake.lib import rootfactory
+from rmake.worker.chroot.rootmanifest import ChrootManifest
+
 
 def _addModeBits(path, bits):
     s = os.lstat(path)
     if not stat.S_ISLNK(s.st_mode) and not (s.st_mode & bits == bits):
         os.chmod(path, stat.S_IMODE(s.st_mode) | bits)
+
 
 class ConaryBasedChroot(rootfactory.BasicChroot):
     """ 
@@ -125,19 +129,9 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             # should only be true in debugging situations
             return
 
-        client = conaryclient.ConaryClient(self.cfg)
-        repos = client.getRepos()
-        if self.chrootCache and hasattr(repos, 'getChangeSetFingerprints'):
-            self.chrootFingerprint = self._getChrootFingerprint(client)
-            if self.chrootCache.hasChroot(self.chrootFingerprint):
-                strFingerprint = sha1helper.sha1ToString(
-                        self.chrootFingerprint)
-                self.logger.info('restoring cached chroot with '
-                        'fingerprint %s', strFingerprint)
-                self.chrootCache.restore(self.chrootFingerprint, self.cfg.root)
-                self.logger.info('chroot fingerprint %s '
-                         'restore done', strFingerprint)
-                return
+        manifest, done = self._restoreFromCache()
+        if done:
+            return
 
         def _install(jobList):
             self.cfg.flavor = []
@@ -155,8 +149,9 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             else:
                 changeSetList = []
 
+            updJob = client.newUpdateJob()
             try:
-                updJob, suggMap = client.updateChangeSet(
+                client.prepareUpdateJob(updJob,
                     jobList, keepExisting=False, resolveDeps=False,
                     recurse=False, checkPathConflicts=False,
                     fromChangesets=changeSetList,
@@ -207,6 +202,8 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             for filename in files:
                 _addModeBits(os.sep.join((root, filename)), 04)
 
+        if manifest:
+            manifest.write(self.cfg.root)
         if self.chrootFingerprint:
             strFingerprint = sha1helper.sha1ToString(self.chrootFingerprint)
             self.logger.info('caching chroot with fingerprint %s',
@@ -300,29 +297,51 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             open(name, 'a').close()
             os.chmod(name, 0600)
 
-    def _getChrootFingerprint(self, client):
+    def _getManifest(self, client):
         job = (sorted(self.jobList) + sorted(self.crossJobList) +
                 sorted(self.bootstrapJobList))
         fingerprints = client.repos.getChangeSetFingerprints(job,
                 recurse=False, withFiles=True, withFileContents=True,
                 excludeAutoSource=True, mirrorMode=False)
-
         a = len(self.jobList)
         b = a + len(self.crossJobList)
+        return ChrootManifest(
+                jobFingerprints=fingerprints[:a],
+                crossFingerprints=fingerprints[a:b],
+                bootstrapFingerprints=fingerprints[b:],
+                rpmRequirements=self.cfg.rpmRequirements,
+                )
 
-        # Make backwards-compatible chroot fingerprints by only appending more
-        # info if it is set.
-
-        # version 1 or later fingerprint
-        blob = ''.join(fingerprints[:a])  # jobList
-        if (self.crossJobList or self.bootstrapJobList or
-                self.cfg.rpmRequirements):
-            # version 2 or later fingerprint
-            blob += '\n'
-            blob += ''.join(fingerprints[a:b]) + '\n'  # crossJobList
-            blob += ''.join(fingerprints[b:]) + '\n'  # bootstrapJobList
-            blob += '\t'.join(str(x) for x in self.cfg.rpmRequirements) + '\n'
-        return sha1helper.sha1String(blob)
+    def _restoreFromCache(self):
+        if not self.chrootCache:
+            return None, False
+        start = time.time()
+        client = conaryclient.ConaryClient(self.cfg)
+        manifest = self._getManifest(client)
+        stop = time.time()
+        self.logger.info("Spent %.03f seconds fetching fingerprints",
+                stop - start)
+        self.chrootFingerprint = manifest.getFingerprint()
+        if self.chrootCache.hasChroot(self.chrootFingerprint):
+            start = time.time()
+            self.chrootCache.restore(self.chrootFingerprint, self.cfg.root)
+            stop = time.time()
+            self.logger.info("Restored chroot %s in %.03f seconds",
+                    self.chrootFingerprint.encode('hex'), stop - start)
+            return manifest, True
+        start = time.time()
+        partial = self.chrootCache.findPartialMatch(manifest)
+        stop = time.time()
+        self.logger.info("Spent %.03f seconds looking for a partial match",
+                stop - start)
+        if partial:
+            start = time.time()
+            self.chrootCache.restore(partial, self.cfg.root)
+            stop = time.time()
+            self.logger.info("Restored chroot %s in %.03f seconds (partial)",
+                    partial.encode('hex'), stop - start)
+            # Continue with rest of install
+        return manifest, False
 
     def invalidateCachedChroot(self):
         """Destroy a cached chroot archive associated with this chroot."""
