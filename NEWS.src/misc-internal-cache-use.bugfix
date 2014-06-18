@@ -1,0 +1,5 @@
+The configured Conary proxy cache will now always be used by the rMake server
+and worker nodes. Previously, if a client had a conaryProxy or proxyMap setting
+when starting the build then that would take precedence. The client still has
+precedence for its own operations i.e. the initial load of the recipe and
+committing of jobs.
