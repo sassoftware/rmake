@@ -363,13 +363,12 @@ class rMakeServer(apirpc.XMLApiServer):
         proxyUrl = self.cfg.getProxyUrl()
         if proxyUrl:
             if hasattr(buildConfig,'proxyMap'):
-                if not buildConfig.proxyMap:
-                    buildConfig.proxyMap.addStrategy('*', [proxyUrl],
-                            replaceScheme='conary')
+                buildConfig.proxyMap.clear()
+                buildConfig.proxyMap.addStrategy('*', [proxyUrl],
+                        replaceScheme='conary')
             else:
-                if not buildConfig.conaryProxy:
-                    buildConfig.conaryProxy['http'] = proxyUrl
-                    buildConfig.conaryProxy['https'] = proxyUrl
+                buildConfig.conaryProxy['http'] = proxyUrl
+                buildConfig.conaryProxy['https'] = proxyUrl
 
     def _serveLoopHook(self):
         if not self._initialized and hasattr(self, 'worker'):

@@ -120,7 +120,7 @@ class RepositoryCache(object):
         # we add extra delimiters here because we can be sure they they
         # will result in a unique string for each n,v,f
         return sha1helper.sha1ToString(
-                sha1helper.sha1String('%s=%s[%s]%s%s' % (name, version, flavor, withFiles, withFileContents)))
+                sha1helper.sha1String('%s=%s[%s]%s%s' % (name, version, flavor.freeze(), withFiles, withFileContents)))
 
     def getChangeSetsForTroves(self, repos, troveList, withFiles=True,
                                withFileContents=True, callback=None):

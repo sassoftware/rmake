@@ -34,6 +34,7 @@ install-mkdirs:
 install: install-mkdirs rmake.init
 	$(INSTALL) -m755 rmake.init $(DESTDIR)/$(initdir)/rmake
 	$(INSTALL) -m755 rmake-node.init $(DESTDIR)/$(initdir)/rmake-node
+	$(INSTALL) -m755 btrfs-tmpwatch $(DESTDIR)$(rmakelibexecdir)/btrfs-tmpwatch
 	# proxy
 	$(INSTALL) -D -m755 proxy/cleanup.sh $(DESTDIR)/etc/cron.daily/rmake-proxy-cleanup
 	$(INSTALL) -D -m644 proxy/nginx.conf $(DESTDIR)/etc/nginx/conf.d/rmake-proxy.conf

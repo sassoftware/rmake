@@ -24,9 +24,12 @@ import fcntl
 import os
 import subprocess
 import tempfile
+import time
+from rmake.worker.chroot.rootmanifest import ChrootManifest
 
-from conary.lib import sha1helper, util
-sha1ToString = sha1helper.sha1ToString
+from conary.lib import util
+from conary.lib.sha1helper import sha1ToString, sha1FromString
+
 
 class ChrootCacheInterface(object):
     """
@@ -95,6 +98,16 @@ class ChrootCacheInterface(object):
         should clean it up.
         """
         return False
+
+    def findPartialMatch(self, manifest):
+        """
+        Scan through existing cached chroots for one with a subset of the
+        needed troves.
+
+        Returns the fingerprint of the partial match that is closest to
+        C{manifest} without any extra troves.
+        """
+        return None
 
 
 class LocalChrootCache(ChrootCacheInterface):
@@ -183,7 +196,9 @@ class BtrfsChrootCache(ChrootCacheInterface):
         path = self._fingerPrintToPath(chrootFingerprint)
         if os.path.isdir(root):
             self._callHelper(["--btrfs-delete", root])
+        open(os.path.join(path, '.used'), 'w').close()
         self._callHelper(["--btrfs-snapshot", root, path])
+        util.removeIfExists(os.path.join(root, '.used'))
 
     def remove(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
@@ -210,3 +225,39 @@ class BtrfsChrootCache(ChrootCacheInterface):
     def _fingerPrintToPath(self, chrootFingerprint):
         basename = sha1ToString(chrootFingerprint) + '.btrfs'
         return os.path.join(self.cacheDir, basename)
+
+    def findPartialMatch(self, manifest):
+        bestScore = -1
+        bestFingerprint = None
+        for name in os.listdir(self.cacheDir):
+            if len(name) != 46 or not name.endswith('.btrfs'):
+                continue
+            cached = ChrootManifest.read(os.path.join(self.cacheDir, name))
+            if not manifest:
+                continue
+            score = manifest.score(cached)
+            if score > bestScore:
+                bestScore = score
+                bestFingerprint = sha1FromString(name[:40])
+        return bestFingerprint
+
+    def findOld(self, hours):
+        thresh = time.time() - 3600 * hours
+        old = []
+        for name in os.listdir(self.cacheDir):
+            if len(name) != 46 or not name.endswith('.btrfs'):
+                continue
+            fingerprint = sha1FromString(name[:40])
+            st = util.lstat(os.path.join(self.cacheDir, name, '.used'))
+            if st:
+                atime = st.st_mtime
+            else:
+                st = util.lstat(os.path.join(self.cacheDir, name))
+                if st:
+                    atime = st.st_atime
+                else:
+                    # Disappeared
+                    continue
+            if atime < thresh:
+                old.append(fingerprint)
+        return old
