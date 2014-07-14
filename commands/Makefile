@@ -34,7 +34,7 @@ libexec_files = chroothelper gen-cert.sh
 
 all: default-all chroothelper
 	mkdir -p $(TOPDIR)/bin
-	install -m755 rmake-wrapper $(TOPDIR)/bin/rmake-wrapper
+	$(INSTALL) -m755 rmake-wrapper $(TOPDIR)/bin/rmake-wrapper
 	for f in $(bin_files) $(sbin_files); do \
 		ln -sf rmake-wrapper $(TOPDIR)/bin/$$f; \
 	done
@@ -47,7 +47,7 @@ config.h:
 	fi
 
 chroothelper.h: chroothelper.h.in ../Make.defs
-	sed -e s,@version@,$(VERSION),g \
+	$(SED) -e s,@version@,$(VERSION),g \
 	    -e s,@rmakeuser@,$(RMAKE_USER),g \
 	    -e s,@rmakegroup@,$(RMAKE_GROUP),g \
 	    -e s,@chrootuser@,$(CHROOT_USER),g \
@@ -57,7 +57,10 @@ chroothelper.h: chroothelper.h.in ../Make.defs
 	$< > $@
 
 chroothelper: chroothelper.c chroothelper.h config.h
-	$(CC) $(CFLAGS) -o $@ chroothelper.c -lcap
+ifeq ($(OS),"Linux")
+	LIBS = -lcap
+endif
+	$(CC) $(CFLAGS) -o $@ chroothelper.c $(LIBS)
 
 install-mkdirs: install-client-mkdirs
 	mkdir -p $(DESTDIR)$(sbindir)
@@ -68,16 +71,16 @@ install-client-mkdirs:
 
 install-client: install-client-mkdirs
 	for f in $(bin_files); do \
-		install -m755 $$f $(DESTDIR)$(bindir)/$$f; \
+		$(INSTALL) -m755 $$f $(DESTDIR)$(bindir)/$$f; \
 	done
 
 install: install-mkdirs install-client chroothelper
 	for f in $(sbin_files); do \
-		install -m755 $$f $(DESTDIR)$(sbindir)/$$f; \
+		$(INSTALL) -m755 $$f $(DESTDIR)$(sbindir)/$$f; \
 	done
 	mkdir -p $(DESTDIR)$(libexecdir)/rmake
 	for f in $(libexec_files); do \
-		install -m755 $$f $(DESTDIR)$(libexecdir)/rmake/$$f; \
+		$(INSTALL) -m755 $$f $(DESTDIR)$(libexecdir)/rmake/$$f; \
 	done
 	chmod 4755 $(DESTDIR)$(libexecdir)/rmake/chroothelper
 

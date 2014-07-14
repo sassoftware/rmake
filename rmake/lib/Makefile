@@ -30,7 +30,7 @@ dist: default-dist
 
 install: all pyfiles-install $(so_targets)
 	mkdir -p $(DESTDIR)$(sitedir)/$(DIR)
-	install -m0755 $(so_targets) $(DESTDIR)$(sitedir)/$(DIR)/
+	$(INSTALL) -m0755 $(so_targets) $(DESTDIR)$(sitedir)/$(DIR)/
 
 %.o : %.c
 	$(CC) $(PY_CFLAGS) -c -o $@ $<
@@ -43,7 +43,9 @@ pycapmodule.o osutil.o osutil_setproctitle.o: pycompat.h
 # Modules
 osutil.so: osutil_setproctitle.o
 osutil.so: LIBS = -ldl
+ifeq ($(OS),"Linux")
 pycap.so: LIBS = -lcap
+endif
 
 
 include $(TOPDIR)/Make.rules

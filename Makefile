@@ -34,7 +34,7 @@ install-client: install-client-subdirs
 clean: clean-subdirs default-clean
 
 version:
-	sed -i 's/@NEW@/$(VERSION)/g' NEWS
+	$(SED) -i 's/@NEW@/$(VERSION)/g' NEWS
 
 show-version:
 	@echo $(VERSION)
@@ -77,7 +77,7 @@ test: all
 	else \
 		SUDO=bash -c ;\
 	fi ;\
-	$${SUDO} 'chown root.root commands/chroothelper; \
+	$${SUDO} 'chown root:root commands/chroothelper; \
 		  chmod 4755 commands/chroothelper'
 
 include Make.rules

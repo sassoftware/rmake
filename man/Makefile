@@ -35,10 +35,10 @@ install-client-mkdirs:
 	mkdir -p $(DESTDIR)$(mandir)/man1
 
 install-client: install-client-mkdirs
-	install -m 644 rmake.1 rmake-multinode.1 $(DESTDIR)$(mandir)/man1
+	$(INSTALL) -m 644 rmake.1 rmake-multinode.1 $(DESTDIR)$(mandir)/man1
 
 install: install-mkdirs install-client
-	install -m 644 rmake-server.8 rmake-multinode.8 rmake-node.8 $(DESTDIR)$(mandir)/man8
+	$(INSTALL) -m 644 rmake-server.8 rmake-multinode.8 rmake-node.8 $(DESTDIR)$(mandir)/man8
 
 dist: default-dist
 

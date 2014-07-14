@@ -24,7 +24,7 @@ SUBDIRS = build cmdline db lib messagebus multinode node server plugins subscrib
 all: default-subdirs default-all constants.py
 
 constants.py: constants.py.in ../Makefile ../Make.defs Makefile
-	sed -e s,@version@,$(VERSION),g \
+	${SED} -e s,@version@,$(VERSION),g \
 	    -e s,@changeset@,$(CHANGESET),g \
 	    -e s,@rmakeuser@,$(RMAKE_USER),g \
 	    -e s,@chrootuser@,$(CHROOT_USER),g \
@@ -38,7 +38,7 @@ constants.py: constants.py.in ../Makefile ../Make.defs Makefile
 install-client: install
 
 install: all install-subdirs pyfiles-install default-install
-	install constants.py $(DESTDIR)$(rmakedir)/constants.py
+	$(INSTALL) constants.py $(DESTDIR)$(rmakedir)/constants.py
 	$(PYTHON) -c "import compileall; compileall.compile_dir('$(DESTDIR)$(rmakedir)', ddir='$(rmakedir)', quiet=1)"
 	$(PYTHON) -OO -c "import compileall; compileall.compile_dir('$(DESTDIR)$(rmakedir)', ddir='$(rmakedir)', quiet=1)"
 

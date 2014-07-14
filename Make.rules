@@ -14,7 +14,6 @@
 # limitations under the License.
 #
 
-
 pyfiles-install:
 	mkdir -p $(DESTDIR)$(rmakedir)
 	for f in $(python_files); do \
@@ -54,29 +53,29 @@ default-test:
 	$(TESTSUITE) *.py
 
 default-subdirs:
-	for d in $(SUBDIRS); do make -C $$d DIR=$$d || exit 1; done
+	for d in $(SUBDIRS); do $(MAKE) -C $$d DIR=$$d || exit 1; done
 
 clean-subdirs:
 ifdef SUBDIRS
-	for d in $(SUBDIRS); do make -C $$d DIR=$(DIR)/$$d clean || exit 1; done
+	for d in $(SUBDIRS); do $(MAKE) -C $$d DIR=$(DIR)/$$d clean || exit 1; done
 endif
 
 install-subdirs:
 ifdef SUBDIRS
-	for d in $(SUBDIRS); do make -C $$d DIR=$(DIR)/$$d install || exit 1; done
+	for d in $(SUBDIRS); do $(MAKE) -C $$d DIR=$(DIR)/$$d install || exit 1; done
 endif
 
 install-client-subdirs:
 ifdef SUBDIRS
-	for d in $(SUBDIRS); do make -C $$d DIR=$(DIR)/$$d install-client || exit 1; done
+	for d in $(SUBDIRS); do $(MAKE) -C $$d DIR=$(DIR)/$$d install-client || exit 1; done
 endif
 
 install-subdirs-noparent:
 ifdef SUBDIRS
-	for d in $(SUBDIRS); do make -C $$d DIR=$$d install || exit 1; done
+	for d in $(SUBDIRS); do $(MAKE) -C $$d DIR=$$d install || exit 1; done
 endif
 
 dist-subdirs:
 ifdef SUBDIRS
-	for d in $(SUBDIRS); do make -C $$d DIR=$(DIR)/$$d dist || exit 1; done
+	for d in $(SUBDIRS); do $(MAKE) -C $$d DIR=$(DIR)/$$d dist || exit 1; done
 endif
