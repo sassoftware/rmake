@@ -128,6 +128,8 @@ def getArch(flavor):
         return 's390'
     if 'mips' in flags['Arch']:
         return 'mips'
+    if 'i86pc' in flags['Arch']:
+        return 'i86pc'
     return None
 
 setArchOk = {'x86_64'  : ['x86'],

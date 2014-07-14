@@ -24,10 +24,14 @@
 #define CHROOT_CAP_DEFINITION RMAKE_PATH "/file-capabilities"
 #define CONARY_EXEC_PATH "/usr/bin/conary"
 #define BTRFS "/sbin/btrfs"
-#define BUSYBOX "/rbin/busybox"
 
+#ifdef __linux__
 #define USE_NAMESPACES 1
 #define USE_BTRFS 1
+#else
+#define USE_NAMESPACES 0
+#define USE_BTRFS 0
+#endif
 
 struct devinfo_t {
         char* path;
@@ -37,16 +41,19 @@ struct devinfo_t {
         short minor;
     };
 
+// On Solaris use the local dev filesystem rather than creating our own.
 static struct devinfo_t devices[] = {
-    { "null", S_IFCHR, 0666, 1, 3 },
-    { "zero", S_IFCHR, 0666, 1, 5 },
-    { "full", S_IFCHR, 0666, 1, 7 },
-    { "urandom", S_IFCHR, 0444, 1, 9 },
-    { "random", S_IFCHR, 0444, 1, 9 }, /* RMK-839: 1,9 is intentional */
-    { "tty",     S_IFCHR, 0666, 5, 0 },
-    { "console",     S_IFCHR, 0600, 5, 1 },
-    { "ptmx",    S_IFCHR, 0666, 5, 2 } };
-
+#ifdef __linux__
+    { "null",       S_IFCHR, 0666, 1, 3 },
+    { "full",       S_IFCHR, 0666, 1, 7 },
+    { "zero",       S_IFCHR, 0666, 1, 5 },
+    { "urandom",    S_IFCHR, 0444, 1, 9 },
+    { "random",     S_IFCHR, 0444, 1, 9 }, /* RMK-839: 1,9 is intentional */
+    { "tty",        S_IFCHR, 0666, 5, 0 },
+    { "console",    S_IFCHR, 0600, 5, 1 },
+    { "ptmx",       S_IFCHR, 0666, 5, 2 },
+#endif
+};
 
 struct symlink_t {
     char * from;
@@ -54,10 +61,12 @@ struct symlink_t {
 };
 
 static struct symlink_t symlinks[] = {
+#ifdef __linux__
     {"/dev/fd", "/proc/self/fd"},
     {"/dev/stdin", "fd/0"},
     {"/dev/stdout", "fd/1"},
     {"/dev/stderr", "fd/2"},
+#endif
 };
 
 struct mount_t {
@@ -67,12 +76,18 @@ struct mount_t {
     char * data;
 };
 
-
 static struct mount_t default_mounts[] = {
+    { "/proc", "/proc", "proc", NULL },
+#ifdef __linux__
     /* See RMK-1062 for explanation of devpts modes. */
     { "/dev/pts", "/dev/pts", "devpts", "mode=620,gid=5" },
-    { "/proc", "/proc", "proc", NULL },
     { "tmpfs", "/dev/shm", "tmpfs", NULL },
+#elif defined(__sun__)
+    // On Solaris use the local dev filesystem rather than creating our own.
+    { "/dev", "/dev", "lofs", NULL },
+    { "/system", "/system", "lofs", NULL },
+    { "/devices", "/devices", "lofs", NULL },
+#endif
 };
 
 static const char *env[] = {

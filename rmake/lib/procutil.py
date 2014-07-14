@@ -17,30 +17,79 @@
 
 
 import os
+import re
 import socket
+import subprocess
 
+
+def parseW():
+    if not os.path.exists('/usr/bin/w'):
+        return
+    p = subprocess.Popen(['/usr/bin/w', ], stdout=subprocess.PIPE)
+    status = p.stdout.readline().strip().split()
+
+    d = {
+        'uptime': float((((int(status[2]) * 24) +
+            int(status[4].split(':')[0])) * 60) +
+            int(status[4].split(':')[1].strip(','))) * 60,
+        'loadavg': {
+            1: float(status[9].strip(',')),
+            5: float(status[10].strip(',')),
+            15: float(status[11]),
+        },
+    }
+
+    return d
 
 def getUptime():
-    # second number is amount of time system has been idle since reboot.
-    return float(open('/proc/uptime').read().strip().split()[0])
+    if os.path.exists('/proc/uptime'):
+        # second number is amount of time system has been idle since reboot.
+        return float(open('/proc/uptime').read().strip().split()[0])
+    else:
+        d = parseW()
+        return d['uptime']
 
 def getLoadAverage():
-    # The fourth number is the number of running processes / total number of 
-    # processes.
-    # The fifth number is the highest PID used.
-    data = open('/proc/loadavg').read().strip().split()[0:3]
-    return tuple(float(x) for x in data)
+    if os.path.exists('/proc/loadavg'):
+        # The fourth number is the number of running processes / total number
+        # of processes.
+        # The fifth number is the highest PID used.
+        data = open('/proc/loadavg').read().strip().split()[0:3]
+        return tuple(float(x) for x in data)
+    else:
+        d = parseW()
+        return (d['loadavg'][1], d['loadavg'][5], d['loadavg'][15])
 
 def getCpuInfo():
-    f = open("/proc/cpuinfo")
-    parts = f.read().strip().split("\n\n")
-    f.close()
     cpus = []
-    for p in parts:
-        lines = p.strip().split("\n")
-        lines = [ l.split(":", 1) for l in lines ]
-        cpuDict = dict( (key.strip(), val.strip()) for (key, val) in lines )
-        cpus.append(CPUInfo(cpuDict["cpu MHz"], cpuDict["model name"]))
+    if os.path.exists('/proc/cpuinfo'):
+        f = open("/proc/cpuinfo")
+        parts = f.read().strip().split("\n\n")
+        f.close()
+        for p in parts:
+            lines = p.strip().split("\n")
+            lines = [ l.split(":", 1) for l in lines ]
+            cpuDict = dict( (key.strip(), val.strip()) for (key, val) in lines )
+            cpus.append(CPUInfo(cpuDict["cpu MHz"], cpuDict["model name"]))
+    elif os.path.exists('/usr/sbin/psrinfo'):
+        cpu_re = re.compile('.*clock\ (.*)\ MHz.*')
+        model_re = re.compile('.*@.*')
+        p = subprocess.Popen(['/usr/sbin/psrinfo', '-pv'],
+                stdout=subprocess.PIPE)
+        out, err = p.communicate()
+
+        clock = None
+        for line in out.split('\n'):
+            line = line.strip()
+            m = cpu_re.match(line)
+            if m and m.groups():
+                clock = m.groups()[0]
+                continue
+            m = model_re.match(line)
+            if m:
+                cpus.append(CPUInfo(clock, line))
+                clock = None
+
     return cpus
 
 #def getStatInfo():
@@ -60,16 +109,19 @@ def getMountInfo():
     return mounts
 
 def getMemInfo():
-    f = open("/proc/meminfo")
-    lines = f.read().strip().split("\n")
-    f.close()
-    lines = [ l.split(None, 1) for l in lines ]
-    memDict = dict( (key, val.strip().split()[0]) for (key, val) in lines )
-    totalMemory = int(memDict["MemTotal:"])
-    freeMemory = int(memDict["MemFree:"])
-    totalSwap = int(memDict["SwapTotal:"])
-    freeSwap = int(memDict["SwapFree:"])
-    return (freeMemory, totalMemory), (freeSwap, totalSwap)
+    if os.path.exists('/proc/meminfo'):
+        f = open("/proc/meminfo")
+        lines = f.read().strip().split("\n")
+        f.close()
+        lines = [ l.split(None, 1) for l in lines ]
+        memDict = dict( (key, val.strip().split()[0]) for (key, val) in lines )
+        totalMemory = int(memDict["MemTotal:"])
+        freeMemory = int(memDict["MemFree:"])
+        totalSwap = int(memDict["SwapTotal:"])
+        freeSwap = int(memDict["SwapFree:"])
+        return (freeMemory, totalMemory), (freeSwap, totalSwap)
+    else:
+        return ('n/a', 'n/a'), ('n/a', 'n/a')
 
 
 def getNetName():

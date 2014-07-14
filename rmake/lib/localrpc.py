@@ -43,7 +43,6 @@ class UnixDomainHTTPConnection(httplib.HTTPConnection):
     def connect(self):
         try:
             self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.sock.setsockopt(IN.PF_UNIX, IN.SO_PASSCRED, 1)
             if self.debuglevel > 0:
                 print "connect: %s" % self.path
             self.sock.connect(self.path)

@@ -333,9 +333,6 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
 
 
 class rMakeChroot(ConaryBasedChroot):
-
-    busyboxDir = '/rbin'
-
     def __init__(self,
             buildTrove,
             chrootHelperPath,
@@ -517,7 +514,6 @@ class rMakeChroot(ConaryBasedChroot):
         if self.canChroot():
             if self._lock(root, fcntl.LOCK_EX):
                 self.logger.info('Running chroot helper to unmount...')
-                util.mkdirChain(root + self.busyboxDir)
                 if self.callHelper(root, ['--unmount']):
                     if raiseError:
                         raise errors.ServerError('Could not unmount old chroot')
@@ -538,8 +534,6 @@ class rMakeChroot(ConaryBasedChroot):
                         "by another process")
                 return False
             self.logger.info('Running chroot helper to clean/unmount...')
-            util.mkdirChain(root + self.busyboxDir)
-            shutil.copy('/sbin/busybox', root + self.busyboxDir + '/busybox')
             if self.callHelper(root, ['--clean']):
                 if raiseError:
                     raise errors.ServerError(
@@ -621,6 +615,10 @@ class FullRmakeChroot(rMakeChroot):
 
         self.copyFile('/etc/hosts')
         self.copyFile('/etc/resolv.conf')
+
+        # needed for networking on solaris
+        if os.path.exists('/etc/netconfig'):
+            self.copyFile('/etc/netconfig')
 
         # make time outputs accurate
         if os.path.exists('/etc/localtime'):

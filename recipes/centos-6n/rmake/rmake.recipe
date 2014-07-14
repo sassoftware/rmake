@@ -77,8 +77,6 @@ class RmakeRecipe(CPackageRecipe):
                                    '%(localstatedir)s/run/rmake')
         r.SetModes('%(libexecdir)s/rmake/chroothelper', 04755)
         r.Requires('rmake:libexec', 'rootfactory.py')
-        r.Requires('/sbin/busybox',
-                   '%(libexecdir)s/rmake/chroothelper')
         r.Requires(exceptDeps='python: (epdb|rmake.cmdline.password)')
         r.ComponentProvides('%(version)s')
         r.UtilizeUser('rmake-chroot', '%(libexecdir)s/rmake/chroothelper')

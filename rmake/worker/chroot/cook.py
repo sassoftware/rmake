@@ -131,7 +131,7 @@ def cookTrove(cfg, repos, logger, name, version, flavorList, targetLabel,
             try:
                 signal.signal(signal.SIGTERM, signal.SIG_DFL)
                 os.close(inF)
-                os.setpgrp()
+                os.setpgid(0, 0)
                 # don't accidentally make world writable files
                 os.umask(0022)
                 # don't allow us to create core dumps

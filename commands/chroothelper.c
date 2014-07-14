@@ -34,7 +34,9 @@
  */
 
 #define _GNU_SOURCE
+#ifdef __linux__
 #include <features.h>
+#endif
 
 #include <errno.h>
 #include <dirent.h>
@@ -49,22 +51,33 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef __sun__
+#include <limits.h>
+#include <signal.h>
+#include <sys/mkdev.h>
+#endif
+
+#ifdef __linux__
 #include <linux/sched.h>
 #include <linux/types.h>
-#include <sys/types.h>
 #include <sys/capability.h>
+#include <sys/prctl.h>
+#endif
+
+#include <sys/types.h>
 #include <sys/mount.h>
 #include <sys/mman.h>
 #include <sys/param.h>
-#include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
 /* needed for personality setting */
+#ifdef __linux__
 #include <syscall.h>
 #include <linux/personality.h>
 #include <sys/utsname.h>
 #define set_pers(pers) ((long)syscall(SYS_personality, pers))
+#endif
 
 #include "chroothelper.h"
 #include "config.h"
@@ -85,7 +98,9 @@ static int opt_chroot_caps = 0; /* set if caps should be set from the chroot
                                    contents */
 static int opt_unshare_net = 0;
 static pid_t child_pid;
+#if USE_BTRFS
 static enum btrfs_mode opt_btrfs = none;
+#endif
 static const char *chrootDir;
 static const char *socketPath;
 
@@ -160,8 +175,9 @@ mkdir_chain(char *path) {
 
 static int
 mount_dir(struct mount_t opts) {
-    int rc, flags;
+    int rc, flags = 0;
     char tempPath[PATH_MAX];
+    char *optbuf;
 
     rc = snprintf(tempPath, PATH_MAX, "%s%s", chrootDir, opts.to);
     if (rc > PATH_MAX) {
@@ -179,11 +195,29 @@ mount_dir(struct mount_t opts) {
         return 1;
     }
     if (opts.data != NULL && strcmp(opts.data, "bind") == 0) {
+#ifdef __linux__
         flags = MS_BIND;
-    } else {
-        flags = 0;
+#elif defined(__sun__)
+        opts.type = "lofs";
+#endif
     }
-    if (mount(opts.from, tempPath, opts.type, flags, opts.data)) {
+
+#ifdef __linux__
+    rc = mount(opts.from, tempPath, opts.type, flags, opts.data);
+#elif defined(__sun__)
+    // optbuf must have enough space for a return message from the
+    // mount syscall.
+    optbuf = malloc(sizeof(char) * 1024);
+    memset(optbuf, '\0', 1024);
+    if (opts.data != NULL) {
+        strncpy(optbuf, opts.data, 1024);
+    }
+    rc = mount(opts.from, tempPath, MS_OPTIONSTR, opts.type, (char *)0x0, 0,
+            optbuf, 1024);
+    free(optbuf);
+#endif
+
+    if (rc) {
         perror("mount");
         /* don't error out on mount errors - if it's already mounted - great!*/
         return 1;
@@ -197,6 +231,8 @@ do_chroot(void) {
     /* Enter in chroot and cd / */
     if (opt_verbose) {
         printf("chroot %s\n", chrootDir);
+        printf("current uid: %d\n", getuid());
+        printf("current gid: %d\n", getgid());
     }
     if (-1 == chroot(chrootDir)) {
         perror("chroot");
@@ -241,6 +277,7 @@ chroot_kill_once(int signum) {
     size_t plen;
     pid_t pid, mypid;
     int killed = 0;
+    struct stat buf;
 
     /* make a version of root with trailing slash */
     plen = strlen(chrootDir);
@@ -261,11 +298,23 @@ chroot_kill_once(int signum) {
     }
     mypid = getpid();
     while ((de = readdir(procptr))) {
-        if (de->d_type != DT_DIR
-                || !strcmp(de->d_name, ".")
-                || !strcmp(de->d_name, "..")) {
+        if (!strcmp(de->d_name, "."))
+            continue;
+        if (!strcmp(de->d_name, ".."))
+            continue;
+#ifndef _DIRENT_HAVE_D_TYPE
+        // Use lstat on non glibc hosts
+        if (lstat(de->d_name, &buf) != 0) {
+            fprintf(stderr, "can not stat %s", de->d_name);
+            return -1;
+        }
+        if (buf.st_mode != S_IFDIR)
+            continue;
+#else
+        if (de->d_type != DT_DIR)
             continue;
         }
+#endif
         snprintf(namebuf, PATH_MAX, "/proc/%s/%s", de->d_name, "root");
         n = readlink(namebuf, linkbuf, PATH_MAX - 1);
         if (n < 0) {
@@ -279,7 +328,7 @@ chroot_kill_once(int signum) {
                 && strncmp(linkbuf, prefix, plen)) { /* prefix match */
             continue;
         }
-        if (sscanf(de->d_name, "%d", &pid) != 1) {
+        if (sscanf(de->d_name, "%d", (int *)&pid) != 1) {
             /* Not an integer, how strange! */
             continue;
         }
@@ -316,6 +365,148 @@ chroot_kill(void) {
         usleep(200000);
     }
     return 0;
+}
+
+/***********************************************************
+ * unlink a file with error reporting
+ **********************************************************/
+static int
+rmfile(const char *path) {
+    if (opt_verbose) {
+        fprintf(stderr, "trying to unlink file %s", path);
+    }
+    if (unlink(path) != 0) {
+        // If the file ihas already been deleted, ignore the error,
+        // otheerwise fail.
+        if (errno != ENOENT) {
+            fprintf(stderr, "could not unlink path %s, %s\n", path,
+                strerror(errno));
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/***********************************************************
+ * Remove a directory structure, as if running rm -rf.
+ **********************************************************/
+static int
+rmtree(const char *path) {
+    DIR *d;
+    struct stat info;
+    struct dirent *dent;
+    char newpath[PATH_MAX];
+
+    // Check to see if we were initially called with a file instead
+    // of a directory.
+    if (lstat(path, &info) != 0) {
+        fprintf(stderr, "can't stat file %s\n", path);
+        return -1;
+    }
+
+    // If so, remove the file.
+    if (!S_ISDIR(info.st_mode))
+        return rmfile(path);
+
+    // Make sure the path exists
+    if ((d = opendir(path)) == NULL) {
+        fprintf(stderr, "can not open path %s\n", path);
+        return -1;
+    }
+
+    // Find a list of all entries in path, excluding . and ..
+    while ((dent = readdir(d))) {
+        if (!strcmp(dent->d_name, "."))
+            continue;
+        if (!strcmp(dent->d_name, ".."))
+            continue;
+        snprintf(newpath, PATH_MAX, "%s/%s", path, dent->d_name);
+        if (lstat(newpath, &info) != 0) {
+            fprintf(stderr, "can't stat %s\n", newpath);
+            goto err;
+        }
+        // Recurse directories
+        if (S_ISDIR(info.st_mode)) {
+            if (rmtree(newpath) != 0)
+                // Return error if sub directory delete fails.
+                goto err;
+            // Try to delete sub directory if empty
+            if (rmdir(newpath) != 0)
+                goto err;
+        // Try to unlink file
+        } else {
+            if (rmfile(newpath) != 0)
+                goto err;
+        }
+    }
+    closedir(d);
+    return 0;
+
+err:
+    closedir(d);
+    return -1;
+}
+
+/***********************************************************
+ * Remove all files owned by a particular UID
+ **********************************************************/
+static int
+rmtreeForUser(const char *path, const uid_t uid) {
+    DIR *d;
+    struct stat info;
+    struct dirent *dent;
+    char newpath[PATH_MAX];
+
+    if ((d = opendir(path)) == NULL) {
+        // Skip any directories that we don't have permission to open.
+        if (errno == EACCES)
+            return 0;
+        perror("rmtreeForUser");
+        fprintf(stderr, "can not open path %s\n", path);
+        goto err;
+    }
+
+    while ((dent = readdir(d))) {
+        if (!strcmp(dent->d_name, "."))
+            continue;
+        if (!strcmp(dent->d_name, ".."))
+            continue;
+        snprintf(newpath, PATH_MAX, "%s/%s", path, dent->d_name);
+        if (lstat(newpath, &info) != 0) {
+            fprintf(stderr, "can not stat %s\n", newpath);
+            goto err;
+        }
+        if (S_ISDIR(info.st_mode)) {
+            if (rmtreeForUser(newpath, uid) != 0) {
+                goto err;
+            }
+            if (info.st_uid == uid) {
+                if (rmdir(newpath) != 0) {
+                    if (errno != ENOENT) {
+                        fprintf(stderr, "could not unlink path %s, %s\n",
+                                newpath, strerror(errno));
+                        fprintf(stderr, "ignoring error\n");
+                    }
+                }
+            }
+        } else {
+            if (info.st_uid == uid) {
+                if (unlink(newpath) != 0) {
+                    if (errno != ENOENT) {
+                        fprintf(stderr, "could not unlink path %s, %s\n",
+                                newpath, strerror(errno));
+                        fprintf(stderr, "ignoring error\n");
+                    }
+                }
+            }
+        }
+    }
+    closedir(d);
+    return 0;
+
+err:
+    closedir(d);
+    return -1;
 }
 
 
@@ -435,60 +626,16 @@ unmountchroot(int opt_clean) {
                 /* we don't own this file, we can't remove it. */
                 continue;
             }
-            pid = fork();
-            if (pid == 0) {
-                execl(BUSYBOX, "busybox", "rm", "-rf", childPath, NULL);
-                /* this will not return unless error */
-                perror("execl");
-                _exit(1);
-            } else {
-                int status;
-                if (-1 == waitpid(pid, &status, 0)) {
-                    perror("waitpid");
-                    return 1;
-                }
-                else if (!WIFEXITED(status)) {
-                    fprintf(stderr, "warning: rm -rf exited abnormally\n");
-                    return 1;
-                }
-                else if (WEXITSTATUS(status) != 0) {
-                    /* don't raise an error - this is expected */
-                    ;
-                }
-            }
+            rmtree(childPath);
         }
     }
 
     if (opt_verbose) {
         printf("deleting other files owned by  uid=%d\n", myUid);
     }
-    pid = fork();
-    if (pid == 0) {
-        execl(BUSYBOX, "busybox",  "sh", "-c",
-                BUSYBOX " find / | "
-                BUSYBOX " sh -c 'while read file; do "
-                    "if `" BUSYBOX " test -O $file`; "
-                    "then " BUSYBOX " rm -rf $file; fi; done'", NULL);
-        /* this will not return unless error */
-        perror("execl");
-        _exit(1);
-    } else {
-        int status;
-        if (-1 == waitpid(pid, &status, 0)) {
-            perror("waitpid");
-            return 1;
-        }
-        else if (!WIFEXITED(status)) {
-            fprintf(stderr, "error: cleanup exited abnormally\n");
-            return 1;
-        }
-        else if (WEXITSTATUS(status) != 0) {
-            fprintf(stderr, "error: cleanup exited abnormally\n");
-            return 1;
-            ;
-        }
+    if (rmtreeForUser("/", myUid) != 0) {
+        return 1;
     }
-
     return 0;
 }
 
@@ -652,7 +799,9 @@ get_conary_interpreter() {
 
 static int
 enter_chroot(void *unused) {
+#ifdef __linux__
     cap_t cap;
+#endif
     unsigned i;
     int rc;
     pid_t pid;
@@ -743,6 +892,7 @@ enter_chroot(void *unused) {
         }
     }
 
+#ifdef __linux__
     /* keep our capabilities as we transition back to our real uid */
     prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
 
@@ -764,6 +914,7 @@ enter_chroot(void *unused) {
         return 1;
     }
     cap_free(cap);
+#endif
 
     /* make required symlinks */
     for(i=0; i < (sizeof(symlinks) / sizeof(symlinks[0])); i++) {
@@ -786,12 +937,13 @@ enter_chroot(void *unused) {
     }
 
     /* chroot, then run tag scripts, then switch to chroot uid */
-    do_chroot();
+    if (do_chroot() != 0)
+        return 1;
     if (!opt_noTagScripts) {
         pid = fork();
         if (pid == 0) {
             /* run with the environment set up inside the shell */
-            execle("/bin/sh", "/bin/sh", "-l", "/root/tagscripts", NULL, env);
+            execle("/bin/sh", "/bin/sh", "-l", "/root/tagscripts", (char*)0, env);
             perror("execl");
             _exit(1);
         }
@@ -836,7 +988,7 @@ enter_chroot(void *unused) {
     if (opt_verbose) {
         printf("executing: %s\n", command);
     }
-    execle("/bin/sh", "/bin/sh", "-lc", command, NULL, env);
+    execle("/bin/sh", "/bin/sh", "-lc", command, (char*)0, env);
     perror("execl");
     return 1;
 }
@@ -1082,13 +1234,13 @@ btrfs_action(void) {
     }
     switch (opt_btrfs) {
         case btrfs_create:
-            execl(BTRFS, BTRFS, "subvolume", "create", chrootDir, NULL);
+            execl(BTRFS, BTRFS, "subvolume", "create", chrootDir, (char *)0);
             break;
         case btrfs_delete:
-            execl(BTRFS, BTRFS, "subvolume", "delete", chrootDir, NULL);
+            execl(BTRFS, BTRFS, "subvolume", "delete", chrootDir, (char *)0);
             break;
         case btrfs_snapshot:
-            execl(BTRFS, BTRFS, "subvolume", "snapshot", socketPath, chrootDir, NULL);
+            execl(BTRFS, BTRFS, "subvolume", "snapshot", socketPath, chrootDir, (char *)0);
             break;
         default:
             return 1;
@@ -1198,7 +1350,10 @@ main(int argc, char **argv)
     }
     /* grab the requested socket path */
     if (!opt_clean && !opt_unmount
-            && opt_btrfs != btrfs_create && opt_btrfs != btrfs_delete) {
+#if USE_BTRFS
+            && opt_btrfs != btrfs_create && opt_btrfs != btrfs_delete
+#endif
+            ) {
         if (optind < argc) {
             if (strlen(argv[optind]) >= PATH_MAX) {
                 usage(argv[0]);
@@ -1225,11 +1380,14 @@ main(int argc, char **argv)
     if (opt_clean || opt_unmount) {
         return unmountchroot(opt_clean);
     }
+#ifdef USE_BTRFS
     if (opt_btrfs != none) {
         return btrfs_action();
     }
+#endif
 
     /* check if we need to do a 32bit setarch */
+#ifdef __linux__ /* This might need to be handled for other hosts */
     if (archname) {
         if (
 #if defined(__x86_64__) || defined(__i386__)
@@ -1261,6 +1419,7 @@ main(int argc, char **argv)
             }
         }
     }
+#endif
     /* finally, start the work */
     return enter_chroot_unshare();
 }

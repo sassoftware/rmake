@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-
+#ifdef __linux__
 #include <Python.h>
 
 #include <sched.h>
@@ -105,4 +105,5 @@ static PyMethodDef CapMethods[] = {
 
 PYMODULE_DECLARE(pycap, "python wrapper for libcap", CapMethods);
 
+#endif /* __linux__ */
 /* vim: set sts=4 sw=4 expandtab : */

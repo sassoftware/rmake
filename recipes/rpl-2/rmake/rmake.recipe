@@ -76,8 +76,6 @@ class RmakeRecipe(CPackageRecipe):
                                    '%(localstatedir)s/run/rmake')
         r.SetModes('%(libexecdir)s/rmake/chroothelper', 04755)
         r.Requires('rmake:libexec', 'rootfactory.py')
-        r.Requires('busybox:runtime',
-                   '%(libexecdir)s/rmake/chroothelper')
         r.Requires('iproute:runtime', '.*/site-packages/rmake/lib/procutil.*')
         r.Requires(exceptDeps='python: (epdb|rmake.cmdline.password)')
         r.ComponentSpec('gtk', 'password.py(|c|o)')
