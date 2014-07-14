@@ -180,6 +180,7 @@ class BtrfsChrootCache(ChrootCacheInterface):
     def store(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
         lock = open(path + '.lock', 'w+')
+        os.fsync(os.open(os.path.dirname(path), os.O_RDONLY))
         try:
             fcntl.lockf(lock.fileno(), fcntl.LOCK_NB | fcntl.LOCK_EX)
         except IOError, err:
@@ -189,7 +190,8 @@ class BtrfsChrootCache(ChrootCacheInterface):
             return
         if not os.path.exists(path):
             self._callHelper(["--btrfs-snapshot", path, root])
-        os.unlink(lock.name)
+        util.removeIfExists(lock.name)
+        os.fsync(os.open(os.path.dirname(path), os.O_RDONLY))
         lock.close()
 
     def restore(self, chrootFingerprint, root):
