@@ -54,7 +54,7 @@ install: install-mkdirs rmake.init
 install-client:
 
 $(generated_files) : % : %.in $(TOPDIR)/Make.defs $(TOPDIR)/Makefile
-	sed -e 's^@rmakepath@^$(rmakepath)^g' \
+	$(SED) -e 's^@rmakepath@^$(rmakepath)^g' \
 	    -e 's^@conarypath@^$(libdir)/python2.4/site-packages/conary^g'  \
 	    -e 's^@version@^$(VERSION)^g' \
 	    -e 's^@bindir@^$(bindir)^g' \
