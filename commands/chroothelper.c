@@ -313,7 +313,6 @@ chroot_kill_once(int signum) {
 #else
         if (de->d_type != DT_DIR)
             continue;
-        }
 #endif
         snprintf(namebuf, PATH_MAX, "/proc/%s/%s", de->d_name, "root");
         n = readlink(namebuf, linkbuf, PATH_MAX - 1);

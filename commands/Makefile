@@ -17,6 +17,12 @@
 
 TOPDIR=..
 
+ifeq ($(shell uname),Linux)
+LIBS="-lcap"
+else
+LIBS=
+endif
+
 bin_files = \
 	rmake
 
@@ -57,9 +63,6 @@ chroothelper.h: chroothelper.h.in ../Make.defs
 	$< > $@
 
 chroothelper: chroothelper.c chroothelper.h config.h
-ifeq ($(OS),"Linux")
-	LIBS = -lcap
-endif
 	$(CC) $(CFLAGS) -o $@ chroothelper.c $(LIBS)
 
 install-mkdirs: install-client-mkdirs
