@@ -854,7 +854,8 @@ enter_chroot_unshare(void) {
     const long stack_size = 2*1024*1024;
     void *stack;
     int flags = SIGCHLD;
-    int pid2, status;
+    int status;
+    pid_t pid2, ppid;
     struct sigaction sa;
 
     /* In Fedora 20, the root filesystem is marked as a 'shared' mount which
@@ -928,9 +929,14 @@ enter_chroot_unshare(void) {
     sigaction(SIGQUIT, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
+    /* Watch to see if our parent dies. Sometimes stopped jobs don't clean up
+     * properly and if that happens we should terminate the chroot server to
+     * keep it from holding an orphaned mount namespace open. */
+    ppid = getppid();
+
     /* Mirror the exit status of the child process */
     while (1) {
-        pid2 = wait(&status);
+        pid2 = waitpid(child_pid, &status, WNOHANG);
         if (pid2 < 0) {
             if (errno == EINTR) {
                 continue;
@@ -938,8 +944,14 @@ enter_chroot_unshare(void) {
             perror("wait");
             return 1;
         }
-        if (pid2 != child_pid) {
-            /* huh? */
+        if (pid2 == 0) {
+            if (getppid() != ppid) {
+                /* Reparented, bail out */
+                fprintf(stderr, "chroothelper: parent process missing; "
+                            "terminating chroot server\n");
+                kill(child_pid, SIGTERM);
+            }
+            sleep(1);
             continue;
         }
         if (WIFEXITED(status)) {
