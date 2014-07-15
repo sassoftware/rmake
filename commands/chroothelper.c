@@ -1379,7 +1379,7 @@ main(int argc, char **argv)
     if (opt_clean || opt_unmount) {
         return unmountchroot(opt_clean);
     }
-#ifdef USE_BTRFS
+#if USE_BTRFS
     if (opt_btrfs != none) {
         return btrfs_action();
     }
