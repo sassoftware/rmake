@@ -187,6 +187,10 @@ class BtrfsChrootCache(ChrootCacheInterface):
                 raise
             # Conflict, just do nothing
             return
+        if util.statFile(lock, True, True
+                ) != util.statFile(lock.name, True, True):
+            # Locked an unlinked file
+            return
         if not os.path.exists(path):
             self._callHelper(["--btrfs-snapshot", path, root])
         os.unlink(lock.name)
