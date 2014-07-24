@@ -1,0 +1,1 @@
+Fixed "rmake watch" leaving the terminal in a bad state if there is an unhandled error.
