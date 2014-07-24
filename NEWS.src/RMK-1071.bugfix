@@ -1,0 +1,1 @@
+Fixed "rmake chroot" crashing on terminals with more than 255 rows or columns.

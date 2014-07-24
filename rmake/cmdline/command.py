@@ -456,7 +456,7 @@ register(RestartCommand)
 
 class ChangeSetCommand(rMakeCommand):
     commands = ['changeset']
-    hidden = True
+    commandGroup = CG_BUILD
     paramHelp = '''\
 <jobId> <troveSpec>* <outfile>
 

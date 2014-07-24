@@ -48,10 +48,11 @@ def monitorJob(client, jobId, showTroveDetails=False, showBuildLogs=False,
     try:
         display = displayClass(client, showBuildLogs=showBuildLogs, out=out,
                                exitOnFinish=exitOnFinish)
-        client = client.listenToEvents(uri, jobId, display,
-                                       showTroveDetails=showTroveDetails,
-                                       serve=serve)
-        return client
+        try:
+            return client.listenToEvents(uri, jobId, display,
+                    showTroveDetails=showTroveDetails, serve=serve)
+        finally:
+            display.close()
     finally:
         if serve and tmpPath:
             os.remove(tmpPath)
