@@ -21,21 +21,25 @@ import re
 import socket
 import subprocess
 
-
 def parseW():
     if not os.path.exists('/usr/bin/w'):
         return
     p = subprocess.Popen(['/usr/bin/w', ], stdout=subprocess.PIPE)
     status = p.stdout.readline().strip().split()
 
+    offset = 10
+    uptime = int(status[2]) * 24 * 60 * 60                      # days
+    uptime += int(status[4].split(':')[0]) * 60 * 60            # hours
+    if ':' in status[4]:
+        offset = 9
+        uptime += int(status[4].split(':')[1].strip(',')) * 60  # minutes
+
     d = {
-        'uptime': float((((int(status[2]) * 24) +
-            int(status[4].split(':')[0])) * 60) +
-            int(status[4].split(':')[1].strip(','))) * 60,
+        'uptime': float(uptime),
         'loadavg': {
-            1: float(status[9].strip(',')),
-            5: float(status[10].strip(',')),
-            15: float(status[11]),
+            1: float(status[offset].strip(',')),
+            5: float(status[offset+1].strip(',')),
+            15: float(status[offset+2]),
         },
     }
 
