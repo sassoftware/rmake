@@ -19,6 +19,7 @@
 Wrapper around rmake.worker that receives and sends messages to the dispatcher.
 """
 import os
+import signal
 import socket
 import time
 import traceback
@@ -38,6 +39,7 @@ from rmake.messagebus import busclient
 from rmake.multinode import messages
 from rmake.multinode import nodetypes
 from rmake.multinode import nodeclient
+
 
 class rMakeWorkerNodeServer(worker.Worker):
     """
@@ -122,7 +124,6 @@ class rMakeWorkerNodeServer(worker.Worker):
                 epdb.serve()
             else:
                 epdb.st()
-        import signal
         signal.signal(signal.SIGUSR1, _interrupt)
 
 
@@ -172,6 +173,7 @@ class rMakeWorkerNodeServer(worker.Worker):
             be dealt with.
         """
         self.client.commandCompleted(commandId)
+
 
 class WorkerNodeClient(nodeclient.NodeClient):
     """

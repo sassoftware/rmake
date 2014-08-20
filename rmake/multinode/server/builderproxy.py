@@ -14,19 +14,14 @@
 # limitations under the License.
 #
 
-
-from rmake import failure
-
-from rmake.build import builder
 from rmake.build import buildtrove
-
 from rmake.lib import server
-
+from rmake.lib import subscriber
 from rmake.worker import worker
-
 from rmake.multinode import messages
 from rmake.multinode import nodeclient
 from rmake.multinode import nodetypes
+
 
 class WorkerClient(server.Server):
     """
@@ -37,7 +32,7 @@ class WorkerClient(server.Server):
         server.Server.__init__(self)
         self.client = BuilderNodeClient(cfg, job.jobId, self)
         self.hasUpdate = False
-        self.eventHandler = builder.EventHandler(job, self.client)
+        self.eventHandler = EventHandler(job, self.client)
 
     def eventsReceived(self, jobId, eventList):
         self.eventHandler._receiveEvents(self.eventHandler.apiVersion, 
@@ -190,3 +185,102 @@ class BuilderNodeClient(nodeclient.NodeClient):
 
     def poll(self, *args, **kw):
         return self.bus.poll(*args, **kw)
+
+
+class EventHandler(subscriber.StatusSubscriber):
+    listeners = { 'TROVE_PREPARING_CHROOT' : 'trovePreparingChroot',
+                  'TROVE_BUILT'            : 'troveBuilt',
+                  'TROVE_PREPARED'         : 'trovePrepared',
+                  'TROVE_FAILED'           : 'troveFailed',
+                  'TROVE_RESOLVING'        : 'troveResolving',
+                  'TROVE_RESOLVED'         : 'troveResolutionCompleted',
+                  'TROVE_LOG_UPDATED'      : 'troveLogUpdated',
+                  'TROVE_BUILDING'         : 'troveBuilding',
+                  'TROVE_DUPLICATE'        : 'troveDuplicate',
+                  'TROVE_STATE_UPDATED'    : 'troveStateUpdated',
+                  'JOB_LOADED'             : 'jobLoaded',
+                  'JOB_FAILED'             : 'jobFailed',
+                  'JOB_LOG_UPDATED'        : 'jobLogUpdated',
+      }
+
+    def __init__(self, job, server):
+        self.server = server
+        self.job = job
+        self._hadEvent = False
+        subscriber.StatusSubscriber.__init__(self, None, None)
+
+    def hadEvent(self):
+        return self._hadEvent
+
+    def reset(self):
+        self._hadEvent = False
+
+    def troveBuilt(self, (jobId, troveTuple), binaryTroveList):
+        self._hadEvent = True
+        t = self.job.getTrove(*troveTuple)
+        self.server.stopTroveLogger(t)
+        t.troveBuilt(binaryTroveList)
+        t.own()
+
+    def trovePrepared(self, (jobId, troveTuple)):
+        self._hadEvent = True
+        t = self.job.getTrove(*troveTuple)
+        self.server.stopTroveLogger(t)
+        t.trovePrepared()
+        t.own()
+
+    def troveLogUpdated(self, (jobId, troveTuple), state, log):
+        t = self.job.getTrove(*troveTuple)
+        t.log(log)
+
+    def troveFailed(self, (jobId, troveTuple), failureReason):
+        self._hadEvent = True
+        t = self.job.getTrove(*troveTuple)
+        self.server.stopTroveLogger(t)
+        t.troveFailed(failureReason)
+        t.own()
+
+    def troveResolving(self, (jobId, troveTuple), chrootHost, pid):
+        t = self.job.getTrove(*troveTuple)
+        t.troveResolvingBuildReqs(chrootHost, pid)
+
+    def troveResolutionCompleted(self, (jobId, troveTuple), resolveResults):
+        self._hadEvent = True
+        t = self.job.getTrove(*troveTuple)
+        t.troveResolved(resolveResults)
+        t.own()
+
+    def trovePreparingChroot(self, (jobId, troveTuple), chrootHost, chrootPath):
+        t = self.job.getTrove(*troveTuple)
+        t.creatingChroot(chrootHost, chrootPath)
+
+    def troveBuilding(self, (jobId, troveTuple), pid, settings):
+        t = self.job.getTrove(*troveTuple)
+        t.troveBuilding(pid, settings)
+
+    def troveDuplicate(self, (jobId, troveTuple), troveList):
+        t = self.job.getTrove(*troveTuple)
+        t.troveDuplicate(troveList)
+        t.own()
+
+    def troveStateUpdated(self, (jobId, troveTuple), state, status):
+        if state not in (buildtrove.TROVE_STATE_FAILED,
+                         buildtrove.TROVE_STATE_UNBUILDABLE,
+                         buildtrove.TROVE_STATE_BUILT,
+                         buildtrove.TROVE_STATE_DUPLICATE,
+                         buildtrove.TROVE_STATE_RESOLVING,
+                         buildtrove.TROVE_STATE_PREPARING,
+                         buildtrove.TROVE_STATE_BUILDING):
+            t = self.job.getTrove(*troveTuple)
+            t._setState(state, status)
+
+    def jobLoaded(self, jobId, loadResults):
+        self.job.jobLoaded(loadResults)
+        self.job.own()
+
+    def jobFailed(self, jobId, failureReason):
+        self.job.jobFailed(failureReason)
+        self.job.own()
+
+    def jobLogUpdated(self, jobId, state, status):
+        self.job.log(status)

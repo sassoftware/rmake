@@ -487,7 +487,7 @@ class RmakeHelper(rephelp.RepositoryHelper, PluginTest):
         self.pluginMgr.enablePlugin('multinode')
         self.pluginMgr.installImporter()
         from rmake.messagebus import busclient
-        from rmake_plugins.multinode import admin
+        from rmake.multinode import admin
         self.pluginMgr.uninstallImporter()
         self.pluginMgr.disablePlugin('multinode')
         b = busclient.MessageBusClient('localhost', messageBusPort, None,

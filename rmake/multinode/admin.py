@@ -18,12 +18,12 @@
 import time
 
 from rmake import errors
-from rmake.lib.apiutils import freeze, thaw
+from rmake.lib.apiutils import thaw
 
 from rmake.messagebus import busclient
+from rmake.multinode import workernode
 from rmake.multinode.server import dispatcher
 from rmake.multinode.server import messagebus
-from rmake.multinode import workernode
 
 
 class MessageBusAdminClient(object):

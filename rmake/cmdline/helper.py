@@ -171,7 +171,7 @@ class rMakeHelper(object):
             configuration output should be valid as input.
         """
         self.buildConfig.initializeFlavors()
-        if not self.buildConfig.buildLabel:
+        if not self.buildConfig.buildLabel and self.buildConfig.installLabelPath:
             self.buildConfig.buildLabel = self.buildConfig.installLabelPath[0]
         self.buildConfig.setDisplayOptions(hidePasswords=hidePasswords,
                                            prettyPrint=prettyPrint)

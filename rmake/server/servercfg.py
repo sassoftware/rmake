@@ -27,6 +27,7 @@ import socket
 import sys
 import subprocess
 import urllib
+import urllib2
 
 from conary import dbstore
 from conary.lib import log, cfg, util
@@ -36,7 +37,9 @@ from conary.conarycfg import CfgUserInfo
 
 from rmake import constants
 from rmake import errors
-from rmake.lib import daemon, chrootcache
+from rmake.lib import chrootcache
+from rmake.lib import daemon
+from rmake.lib import procutil
 
 
 class CfgChrootCache(cfg.CfgType):
@@ -93,9 +96,6 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
     chrootExtraMounts = CfgList(CfgString)
     hostName          = (CfgString, 'localhost')
     verbose           = False
-
-    def getAuthUrl(self):
-        return None
 
     def getCommandSocketDir(self):
         return self.buildDir + '/tmp/'
@@ -157,6 +157,15 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
                 raise errors.RmakeError('%s (%s) must have owner %s' % (
                                             path, name, requiredOwner))
 
+    def getMessageBusHost(self, qualified=False):
+        host = self.messageBusHost
+        if host in (None, 'LOCAL'):
+            if qualified:
+                return procutil.getNetName()
+            else:
+                return 'localhost'
+        else:
+            return host
 
     def checkBuildSanity(self):
         rmakeUser = constants.rmakeUser
@@ -185,8 +194,15 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
     caCertPath        = CfgPath
     reposUser         = CfgUserInfo
     useResolverCache  = (CfgBool, True)
-
     dbPath            = dbstore.CfgDriver
+    reposUrl        = (CfgString, 'https://LOCAL:7777')
+    rmakeUrl        = (CfgString, 'https://localhost:9999')
+    proxyUrl        = (CfgString, None)
+    rbuilderUrl     = (CfgString, 'https://localhost/')
+    # if None, start one locally
+    # if "LOCAL", don't start one but still use localhost
+    messageBusHost  = (CfgString, None)
+    messageBusPort  = (CfgInt, 50900)
 
     _cfg_aliases = [
             ('proxy',       'proxyUrl'),
@@ -217,11 +233,11 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
         for path in ['/etc/rmake/serverrc', 'serverrc']:
             self.read(path, False)
 
+    def getAuthUrl(self):
+        return self.translateUrl(self.rbuilderUrl)
+
     def getServerUri(self):
-        if not hasattr(self, 'rmakeUrl'):
-            rmakeUrl = 'unix:///var/lib/rmake/socket'
-        else:
-            rmakeUrl = self.rmakeUrl
+        rmakeUrl = self.rmakeUrl
         if '://' in rmakeUrl:
             return rmakeUrl
         else:
@@ -281,6 +297,12 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
 
     def getSubscriberLogPath(self):
         return self.logDir + '/subscriber.log'
+
+    def getMessageBusLogPath(self):
+        return self.logDir + '/messagebus.log'
+
+    def getDispatcherLogPath(self):
+        return self.logDir + '/dispatcher.log'
 
     def getResolverCachePath(self):
         return self.serverDir + '/resolvercache'
@@ -349,7 +371,15 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
     def sanityCheck(self):
         pass
 
+    def checkBuildSanity(self):
+        #cancel out build sanity check - this is not a build node.
+        return True
+
     def sanityCheckForStart(self):
+        if self.proxyUrl is None:
+            self.proxyUrl = self.rbuilderUrl
+        if self.hostName == 'localhost':
+            self.hostName = procutil.getNetName()
         currUser = pwd.getpwuid(os.getuid()).pw_name
         cfgPaths = ['logDir', 'lockDir', 'serverDir']
         socketPath = self.getSocketPath()
@@ -370,9 +400,22 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
             if not os.access(self[path], os.W_OK):
                 log.error('user "%s" cannot write to %s at %s - cannot start server' % (currUser, path, self[path]))
                 sys.exit(1)
-
         if self.useResolverCache:
             util.mkdirChain(self.getResolverCachePath())
+        try:
+            try:
+                urllib2.urlopen(self.rbuilderUrl).read(1024)
+            except urllib2.HTTPError, err:
+                if 200 <= err.code < 400:
+                    # Something benign like a redirect
+                    pass
+                else:
+                    raise
+        except Exception, err:
+            raise errors.RmakeError('Could not access rbuilder at %s.  '
+                    'Please ensure you have a line "rbuilderUrl '
+                    'https://<yourRbuilder>" set correctly in your serverrc '
+                    'file.  Error: %s' % (self.rbuilderUrl, err))
 
     def reposRequiresSsl(self):
         return urllib.splittype(self.reposUrl)[0] == 'https'

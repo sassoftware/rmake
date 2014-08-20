@@ -15,7 +15,7 @@
 #
 
 
-VERSION=2.1.0
+VERSION=2.2.0
 
 export PYVER ?= $(shell python -c 'import sys; print sys.version[0:3]')
 export PYTHON ?= /usr/bin/python${PYVER}

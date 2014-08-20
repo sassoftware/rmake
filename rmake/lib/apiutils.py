@@ -154,6 +154,12 @@ def api_forking(func):
     func.forking = True
     return func
 
+
+def allow_anonymous(fn):
+    fn.allowAnonymousAccess = True
+    return fn
+
+
 # --- generic methods to freeze/thaw based on type
 
 def freeze(apitype, item):

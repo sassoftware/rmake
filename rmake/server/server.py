@@ -19,40 +19,39 @@
 """
 rMake Backend server
 """
-import errno
 import itertools
 import logging
-import pwd
 import os
 import random
-import shutil
-import signal
+import socket
 import sys
-import time
 import traceback
 import urllib
 import xmlrpclib
 
-from conary.deps import deps
 from conary.lib import util
 
+from rmake import constants
 from rmake import errors
-from rmake import failure
 from rmake import plugins
 from rmake.build import builder
-from rmake.build import buildcfg
 from rmake.build import buildjob
-from rmake.build import imagetrove
 from rmake.build import subscriber
+from rmake.multinode.server import dispatcher
+from rmake.multinode.server import messagebus
+from rmake.multinode.server import subscriber as mn_subscriber
+from rmake.multinode.server import workerproxy
 from rmake.server import auth
 from rmake.server import publish
 from rmake.db import database
 from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw
-from rmake.lib.apiutils import api_nonforking
+from rmake.lib.apiutils import api_nonforking, allow_anonymous
 from rmake.lib import apirpc
 from rmake.lib import logger
-from rmake.lib.rpcproxy import ShimAddress
-from rmake.worker import worker
+
+# load our messages so that they are understood by the messagebus
+import rmake.multinode.messages  # pyflakes=ignore
+
 
 class ServerLogger(logger.ServerLogger):
     name = 'rmake-server'
@@ -327,6 +326,22 @@ class rMakeServer(apirpc.XMLApiServer):
         return (self.cfg.reposName, self.cfg.getRepositoryMap(),
                 list(self.cfg.reposUser), proxyUrl)
 
+    # --- these methods used to be part of the multinode extension
+
+    @api(version=1)
+    @api_parameters(1)
+    @api_return(1, None)
+    def listNodes(self, callData):
+        return [freeze('Node', x) for x in self.db.listNodes()]
+
+    @api(version=1)
+    @api_parameters(1)
+    @api_return(1, None)
+    @allow_anonymous
+    def getMessageBusInfo(self, callData):
+        host = self.cfg.getMessageBusHost(qualified=True)
+        return dict(host=host, port=self.cfg.messageBusPort)
+
     # --- callbacks from Builders
 
     @api(version=1)
@@ -336,18 +351,6 @@ class rMakeServer(apirpc.XMLApiServer):
         # currently we assume that this apiVer is extraneous, just
         # a part of the protocol for EventLists.
         self._publisher.addEvent(jobId, eventList)
-
-    @api(version=1)
-    @api_parameters(1)
-    @api_return(1, None)
-    def listNodes(self, callData):
-        return []
-
-    @api(version=1)
-    @api_parameters(1)
-    @api_return(1, None)
-    def getMessageBusInfo(self, callData):
-        return ''
 
     # --- internal functions
 
@@ -377,7 +380,7 @@ class rMakeServer(apirpc.XMLApiServer):
             for state in buildjob.ACTIVE_STATES:
                 jobsToFail += self.db.getJobsByState(state)
             self._failCurrentJobs(jobsToFail, 'Server was stopped')
-            self._initializeNodes()
+            self.db.deactivateAllNodes()
             self._initialized = True
 
         while not self._halt:
@@ -391,7 +394,7 @@ class rMakeServer(apirpc.XMLApiServer):
             queuedJobs = self.db.getJobs(jobIds,
                                          withTroves=False, withConfigs=False)
             for idx, queuedJob in enumerate(queuedJobs):
-                self._subscribeToJobInternal(queuedJob)
+                self._subscribeToJob(queuedJob)
                 if not idx:
                     queuedJob.jobQueued(
                         'Job Queued - You are next in line for processing')
@@ -406,8 +409,11 @@ class rMakeServer(apirpc.XMLApiServer):
                 job.exceptionOccurred('Failed while initializing',
                                       traceback.format_exc())
             break
-        self._publisher.emitEvents()
+        if self._publisher:
+            self._publisher.emitEvents()
         self._collectChildren()
+        if self._nodeClient:
+            self._nodeClient.poll()
         self.plugins.callServerHook('server_loop', self)
 
     def _getNextJob(self):
@@ -423,11 +429,20 @@ class rMakeServer(apirpc.XMLApiServer):
             return job
 
     def _canBuild(self):
-        # NOTE: Because there is more than one root manager for the local
-        # machine, we cannot have more than one process building at the 
-        # same time in the single-node version of rMake.  They would conflict
-        # over the use of particular chroots.
-        return not self.db.isJobBuilding()
+        if self.db.getEmptySlots():
+            return True
+
+    def _authCheck(self, callData, fn, *args, **kw):
+        if getattr(fn, 'allowAnonymousAccess', None):
+            return True
+        if (callData.auth.getSocketUser()
+          or callData.auth.getCertificateUser()):
+            return True
+        user, password = (callData.auth.getUser(), callData.auth.getPassword())
+        if (user, password) == self.internalAuth:
+            return True
+        self.auth.authCheck(user, password, callData.auth.getIP())
+        return True
 
     def _shutDown(self):
         # we've gotten a request to halt, kill all jobs (they've run
@@ -435,30 +450,28 @@ class rMakeServer(apirpc.XMLApiServer):
         if self.db:
             self._stopAllJobs()
             self._killAllPids()
+        if self._dispatcherPid:
+            pid = self._dispatcherPid
+            self._dispatcherPid = None
+            self._killPid(pid)
+        if self._messageBusPid:
+            pid = self._messageBusPid
+            self._messageBusPid = None
+            self._killPid(pid)
         if hasattr(self, 'plugins') and self.plugins:
             self.plugins.callServerHook('server_shutDown', self)
         sys.exit(0)
 
     def _subscribeToJob(self, job):
-        for subscriber in self._subscribers:
-            subscriber.attach(job)
+        for sub in self._subscribers:
+            sub.attach(job)
 
     def _subscribeToBuild(self, build):
-        for subscriber in self._subscribers:
-            if hasattr(subscriber, 'attachToBuild'):
-                subscriber.attachToBuild(build)
+        for sub in self._subscribers:
+            if hasattr(sub, 'attachToBuild'):
+                sub.attachToBuild(build)
             else:
-                subscriber.attach(build.getJob())
-
-    def _subscribeToJobInternal(self, job):
-        for subscriber in self._internalSubscribers:
-            subscriber.attach(job)
-
-    def _initializeNodes(self):
-        self.db.deactivateAllNodes()
-        chroots = self.worker.listChroots()
-        self.db.addNode('_local_', 'localhost.localdomain', self.cfg.slots,
-                        [], chroots)
+                sub.attach(build.getJob())
 
     def _startBuild(self, job):
         pid = self._fork('Job %s' % job.jobId, close=True)
@@ -552,27 +565,26 @@ class rMakeServer(apirpc.XMLApiServer):
             self._publisher._pidDied(pid, status)  # only allow one
                                                    # emitEvent process
                                                    # at a time.
+        for attr, descr, logpath in [
+                ('proxyPid', 'proxy', self.cfg.getProxyLogPath()),
+                ('repositoryPid', 'repository', self.cfg.getReposLogPath()),
+                ('_messageBusPid', 'message bus',
+                    self.cfg.getMessageBusLogPath()),
+                ('_dispatcherPid', 'dispatcher',
+                    self.cfg.getDispatcherLogPath()),
+                ]:
+            if pid != getattr(self, attr):
+                continue
+            if not self._halt:
+                self.error("""
+    Internal %s died - shutting down rMake.
+    The %s can die on startup due to an earlier unclean shutdown of
+    rMake.  Check for orphaned processes running under the '%s' user,
+    and check the log file at %s for detailed diagnostics.
+    """ % (descr, descr, constants.rmakeUser, logpath))
+                self._halt = True
+            setattr(self, attr, None)
 
-        if pid == self.proxyPid:
-            if not self._halt:
-                self.error("""
-    Internal proxy died - shutting down rMake.
-    The Proxy can die on startup due to an earlier unclean shutdown of 
-    rMake.  Check for a process that ends in conary/server/server.py.  If such 
-    a process exists, you will have to kill it manually.  Otherwise check
-    %s for a detailed message""" % self.cfg.getProxyLogPath())
-                self._halt = 1
-            self.proxyPid = None
-        if pid == self.repositoryPid:
-            if not self._halt:
-                self.error("""
-    Internal Repository died - shutting down rMake.
-    The Repository can die on startup due to an earlier unclean shutdown of 
-    rMake.  Check for a process that ends in conary/server/server.py.  If such 
-    a process exists, you will have to kill it manually.  Otherwise check
-    %s for a detailed message""" % self.cfg.getReposLogPath())
-                self._halt = 1
-            self.repositoryPid = None
         self.plugins.callServerHook('server_pidDied', self, pid, status)
 
     def _stopJob(self, job):
@@ -632,6 +644,68 @@ class rMakeServer(apirpc.XMLApiServer):
 
         self.internalAuth = (user, password)
 
+    def _startMessageBus(self):
+        if self.cfg.messageBusHost is not None:
+            return
+        messageBusLog = self.cfg.getMessageBusLogPath()
+        messageLog = self.cfg.logDir + '/messages/messagebus.log'
+        util.mkdirChain(os.path.dirname(messageLog))
+        m = messagebus.MessageBus('', self.cfg.messageBusPort, messageBusLog,
+                messageLog)
+        port = m.getPort()
+        pid = self._fork('Message Bus')
+        if pid:
+            m._close()
+            self._messageBusPid = pid
+        else:
+            try:
+                try:
+                    m._installSignalHandlers()
+                    self._close()
+                    self._runServer(m, m.serve_forever, 'Message Bus')
+                except Exception, err:
+                    m.error('Startup failed: %s: %s' % (err,
+                                                        traceback.format_exc()))
+            finally:
+                os._exit(3)
+
+    def _startDispatcher(self):
+        pid = self._fork('Dispatcher')
+        if pid:
+            self._dispatcherPid = pid
+            return
+        try:
+            d = dispatcher.DispatcherServer(self.cfg, self.db)
+            try:
+                d._installSignalHandlers()
+                self._close()
+                self.db.reopen()
+                self._runServer(d, d.serve, 'Dispatcher')
+            except Exception, err:
+                d.error('Startup failed: %s: %s' % (err,
+                                                    traceback.format_exc()))
+        finally:
+            os._exit(3)
+
+    def _runServer(self, server, fn, name, *args, **kw):
+        try:
+            fn()
+            os._exit(0)
+        except SystemExit, err:
+            os._exit(err.args[0])
+        except errors.uncatchableExceptions, err:
+            # Keyboard Interrupt, etc.
+            os._exit(1)
+        except socket.error, err:
+            err = '%s Died: %s\n' % (name, err)
+        except Exception, err:
+            try:
+                err = '%s Died: %s\n%s' % (name, err, traceback.format_exc())
+                server.error(err)
+                os._exit(1)
+            except:
+                os._exit(2)
+
     def __init__(self, uri, cfg, repositoryPid=None, proxyPid=None,
                  pluginMgr=None, quiet=False):
         util.mkdirChain(cfg.logDir)
@@ -649,6 +723,10 @@ class rMakeServer(apirpc.XMLApiServer):
             else:
                 logLevel = logging.INFO
             serverLogger.enableConsole(logLevel)
+        self._messageBusPid = None
+        self._dispatcherPid = None
+        self._nodeClient = None
+        self._publisher = None
         serverLogger.info('*** Started rMake Server at pid %s (serving at %s)' % (os.getpid(), uri))
         try:
             self._initialized = False
@@ -674,31 +752,27 @@ class rMakeServer(apirpc.XMLApiServer):
                 pluginMgr = plugins.PluginManager([])
             self.plugins = pluginMgr
 
+            self._startMessageBus()
+            self._startDispatcher()
+            self._nodeClient = mn_subscriber.rMakeServerNodeClient(self.cfg,
+                    self)
+            self._nodeClient.connect()
+
             # any jobs that were running before are not running now
             subscriberLog = logger.Logger('susbscriber',
                                           self.cfg.getSubscriberLogPath())
             self._publisher = publish._RmakeServerPublisher(subscriberLog,
                                                             self.db,
                                                             self._fork)
-            self.worker = worker.Worker(self.cfg, self._logger)
+            self.worker = workerproxy.WorkerProxy(self.cfg, self._nodeClient,
+                    self._logger)
             dbLogger = subscriber._JobDbLogger(self.db)
+            nodesub = mn_subscriber._RmakeBusPublisher(self._nodeClient)
             # note - it's important that the db logger
             # comes first, before the general publisher,
             # so that whatever published is actually 
             # recorded in the DB.
-            self._subscribers = [dbLogger]
-            if self.uri:
-                s = subscriber._RmakeServerPublisherProxy(self.uri)
-            else:
-                # testsuite path - external subscribers also go through
-                # internal interface when the server is not run as a separate
-                # process.
-                s = subscriber._RmakeServerPublisherProxy(ShimAddress(self))
-            self._subscribers.append(s)
-
-            self._internalSubscribers = [dbLogger]
-            s = subscriber._RmakeServerPublisherProxy(ShimAddress(self))
-            self._internalSubscribers.append(s)
+            self._subscribers = [dbLogger, nodesub]
             self.plugins.callServerHook('server_postInit', self)
         except errors.uncatchableExceptions:
             raise
