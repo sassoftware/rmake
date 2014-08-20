@@ -19,7 +19,6 @@
 Wrapper around rmake.worker that receives and sends messages to the dispatcher.
 """
 import os
-import signal
 import socket
 import time
 import traceback
@@ -29,11 +28,10 @@ from conary import errors
 from rmake import failure
 from rmake.build import subscriber
 from rmake.lib import logger
-from rmake.lib import osutil
 from rmake.lib import procutil
 from rmake.lib import server
 from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw
-from rmake.worker import command
+from rmake.server import client
 from rmake.worker import worker
 
 from rmake.messagebus import busclient
@@ -208,7 +206,6 @@ class WorkerNodeClient(nodeclient.NodeClient):
                                     chrootLimit=cfg.chrootLimit)
 
         # grab the message bus location from the rmake server.
-        from rmake_plugins.multinode_client.server import client
         rmakeClient = client.rMakeClient(cfg.rmakeUrl)
         if not messageBusInfo:
             messageBus = None
@@ -385,7 +382,7 @@ class WorkerNodeRPCClient(object):
         return self.proxy.listChroots()
 
     def getStatus(self):
-        raise NotImplementError
+        raise NotImplementedError
 
     def startChrootSession(self, chrootPath, command, superUser=False, 
                            buildTrove=None):

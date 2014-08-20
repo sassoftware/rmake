@@ -19,7 +19,7 @@ plugin_files = *.py
 
 all: default-subdirs default-all
 
-SUBDIRS = multinode_client multinode
+SUBDIRS = multinode
 export DIR=
 DIR=.
 

@@ -19,8 +19,10 @@
 Describes a BuildConfiguration, which is close to, but neither a subset nor
 a superset of a conarycfg file.
 """
+
 import os
 import re
+import urllib
 
 from conary import conarycfg
 from conary import versions
@@ -241,6 +243,9 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
     jobContext           = CfgList(CfgInt)
     recursedGroupTroves  = CfgList(CfgTroveTuple)
     reposName            = (CfgString, None)
+    rmakeUrl            = (CfgString, 'https://localhost')
+    rmakeUser           = (CfgUser, None)
+    clientCert = (cfgtypes.CfgPath, None)
     prebuiltBinaries               = CfgList(CfgTroveTuple)
     ignoreExternalRebuildDeps      = (CfgBool, False)
     ignoreAllRebuildDeps           = (CfgBool, False)
@@ -285,10 +290,6 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
                     self.addConfigOption(*info)
         if strictMode is not None:
             self.strictMode = strictMode
-        if not hasattr(self, 'rmakeUrl'):
-            self.rmakeUrl = None
-        if not hasattr(self, 'clientCert'):
-            self.clientCert = None
 
         if readConfigFiles:
             if os.path.exists(root + '/etc/rmake/clientrc'):
@@ -305,6 +306,10 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
             self.enforceManagedPolicy = True
             self.copyInConary = False
             self.copyInConfig = False
+        if self.copyInConary or self.copyInConfig:
+            log.warning("The copyInConary and copyInConfig config options "
+                    "are deprecated")
+        self.copyInConary = self.copyInConfig = False
 
         # these values are not set based on 
         # config file values - we don't want to touch the system database, 
@@ -372,9 +377,20 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
                 self.resetToDefault(option)
 
     def getServerUri(self):
-        if self.rmakeUrl:
-            return self.rmakeUrl
-        return 'unix:///var/lib/rmake/socket'
+        url = self.rmakeUrl
+        type, rest = urllib.splittype(url)
+        if type != 'unix':
+            host, path = urllib.splithost(rest)
+            user, host = urllib.splituser(host)
+            host, port = urllib.splitport(host)
+            if not port:
+                port = 9999
+            user = ''
+            if self.rmakeUser:
+                user = '%s:%s@'  % (self.rmakeUser)
+
+            url = '%s://%s%s:%s%s' % (type, user, host, port, path)
+        return url
 
     def limitToHosts(self, hosts):
         if isinstance(hosts, str):
@@ -485,6 +501,7 @@ class SanitizedBuildConfiguration(object):
         cfg = apiutils.freeze('BuildConfiguration', cfg)
         cfg['user'] = []
         cfg['entitlement'] = []
+        del cfg['rmakeUser']
         return cfg
 
     @staticmethod

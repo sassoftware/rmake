@@ -19,6 +19,7 @@ import os
 import sys
 
 from conary import conarycfg
+from conary.conarycfg import ParseError
 from conary.deps import deps
 from conary.lib import log
 from conary.lib import options
@@ -47,14 +48,10 @@ class rMakeCommand(options.AbstractCommand):
 
     docs = {'config'             : (VERBOSE_HELP,
                                     "Set config KEY to VALUE", "'KEY VALUE'"),
-            'server-config'      : (VERBOSE_HELP,
-                            "Set server config KEY to VALUE", "'KEY VALUE'"),
             'config-file'        : (VERBOSE_HELP,
                                     "Read PATH config file", "PATH"),
             'context'            : (VERBOSE_HELP,
                                     "Set the configuration context to use"),
-            'server-config-file' : (VERBOSE_HELP,
-                                    "Read PATH config file", "PATH"),
             'conary-config-file'  : (VERBOSE_HELP,
                                     "Read PATH conary config file", "PATH"),
             'build-config-file'  : (VERBOSE_HELP,
@@ -70,8 +67,6 @@ class rMakeCommand(options.AbstractCommand):
         d = {}
         d["context"] = ONE_PARAM
         d["config"] = MULT_PARAM
-        d["server-config"] = MULT_PARAM
-        d["server-config-file"] = MULT_PARAM
         d["build-config-file"] = MULT_PARAM
         d["conary-config-file"] = MULT_PARAM
         d["skip-default-config"] = NO_PARAM
@@ -143,8 +138,6 @@ class rMakeCommand(options.AbstractCommand):
         for line in argSet.pop('config', []):
             buildConfig.configLine(line)
 
-        for line in argSet.pop('server-config', []):
-            serverConfig.configLine(line)
         if argSet.pop('verbose', False):
             log.setVerbosity(log.DEBUG)
 
@@ -183,6 +176,14 @@ class rMakeCommand(options.AbstractCommand):
             return args[:len(expected)] + [args[len(expected):]]
         else:
             return args
+
+    def _getChroot(self, chroot):
+        params = chroot.split(':', 1)
+        if len(params) != 2:
+            self.usage()
+            raise errors.RmakeError(
+                            'Chroot name needs to be <host>:<chroot> format')
+        return params
 
 
 def _getJobIdOrUUIds(val):
@@ -731,11 +732,13 @@ register(QueryCommand)
 
 
 class ListCommand(rMakeCommand):
-    """\
-    List information about the given rmake server.
+    """
+        List information about the given rmake server.
 
-    Types Available:
-        list [ch]roots - lists chroots on this rmake server"""
+        Example:
+            list roots  - lists roots associated with this server
+            list nodes  - lists nodes attached to this rmake server
+    """
     commands = ['list']
     paramHelp = "<type>"
     help = 'List various information about this rmake server'
@@ -757,12 +760,23 @@ class ListCommand(rMakeCommand):
             raise errors.RmakeError('No such list command %s' % subCommand)
         commandFn(client, cfg, argSet)
 
-
     def listChroots(self, client, cfg, argSet):
         allChroots = not argSet.pop('active', False)
         query.listChroots(client, cfg, allChroots=allChroots)
     listRoots = listChroots
+
+    def listNodes(self, client, cfg, argSet):
+        for node in client.client.listNodes():
+            buildFlavors = ', '.join(['[%s]' % x for x in node.flavors])
+            if node.slots > 1:
+                print '%s %s (%s slots)' % (node.name, buildFlavors, node.slots)
+            else:
+                print '%s %s (1 slot)' % (node.name, buildFlavors)
+            for chroot in node.chroots:
+                if chroot.active:
+                    query.displayChroot(chroot)
 register(ListCommand)
+
 
 class ChrootCommand(rMakeCommand):
     """\
@@ -786,9 +800,6 @@ class ChrootCommand(rMakeCommand):
         argDef['super'] = NO_PARAM
         argDef['path'] = ONE_PARAM
         rMakeCommand.addParameters(self, argDef)
-
-    def _getChroot(self, chroot):
-        return '_local_', chroot
 
     def runCommand(self, client, cfg, argSet, args):
         command, jobId, troveSpec = self.requireParameters(args,
@@ -827,9 +838,6 @@ class ArchiveCommand(rMakeCommand):
     def addParameters(self, argDef):
         rMakeCommand.addParameters(self, argDef)
 
-    def _getChroot(self, chroot):
-        return '_local_', chroot
-
     def runCommand(self, client, cfg, argSet, args):
         command, chroot, extra = self.requireParameters(args,
                                                        ['chrootPath'],
@@ -859,9 +867,6 @@ class CleanCommand(rMakeCommand):
     def addParameters(self, argDef):
         argDef['all'] = NO_PARAM
         rMakeCommand.addParameters(self, argDef)
-
-    def _getChroot(self, chroot):
-        return '_local_', chroot
 
     def runCommand(self, client, cfg, argSet, args):
         if argSet.pop('all', False):
