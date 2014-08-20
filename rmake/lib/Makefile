@@ -18,7 +18,10 @@
 TOPDIR=../..
 python_files = *.py
 dist_files = Makefile $(python_files) osutil.c pycap.c pycompat.h
-so_targets = osutil.so pycap.so
+so_targets =
+ifeq ($(shell uname),Linux)
+so_targets += osutil.so pycap.so
+endif
 PY_CFLAGS = $(CFLAGS) -I/usr/include/python$(PYVER)
 PY_LDFLAGS = $(LDFLAGS) -shared -rdynamic
 
@@ -43,9 +46,7 @@ pycapmodule.o osutil.o osutil_setproctitle.o: pycompat.h
 # Modules
 osutil.so: osutil_setproctitle.o
 osutil.so: LIBS = -ldl
-ifeq ($(OS),"Linux")
 pycap.so: LIBS = -lcap
-endif
 
 
 include $(TOPDIR)/Make.rules

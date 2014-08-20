@@ -40,7 +40,6 @@ export CHROOT_SERVER=/rmake/worker/chroot/rootserver.py
 
 SED ?= sed
 INSTALL ?= install
-OS ?= $(shell uname)
 CC ?= gcc
 
 export prefix = /usr
