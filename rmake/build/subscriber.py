@@ -27,14 +27,10 @@
 
     Currently, there are 2 Internal Subscribers:
      * _JobDBLogger: listens to state changes and records them in the database.
-     * _RmakeServerPublisherProxy: listens to events and passes them off to
-       the rMake Server.
 
     NOTE: there is one other internal subscriber, the dependency handler.
 """
-from conary.lib import log
 
-from rmake.lib import apirpc
 from rmake.lib import apiutils
 from rmake.lib import subscriber
 from rmake.lib.apiutils import thaw, freeze
@@ -178,14 +174,6 @@ class _RmakePublisherProxy(_InternalSubscriber):
     def _emitEvents(self, jobId, eventList):
         raise NotImplementedError
 
-class _RmakeServerPublisherProxy(_RmakePublisherProxy):
-    def __init__(self, uri):
-        from rmake.server import server
-        self.proxy = apirpc.XMLApiProxy(server.rMakeServer, uri)
-        _RmakePublisherProxy.__init__(self)
-
-    def _emitEvents(self, jobId, eventList):
-        self.proxy.emitEvents(jobId, eventList)
 
 class _EventListFreezer(object):
     """

@@ -24,25 +24,15 @@
     The DispatcherClient provides and XMLRPC-over-messagebus interface
     to the dispatcher for querying the dispatcher status out-of-band.
 """
-import os
+
 import signal
-
 from conary.deps import deps
-from conary.lib import util
-
 from rmake import errors
-from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw
-
-from rmake.build import buildjob
-from rmake.build import buildtrove
-from rmake.lib import apirpc
 from rmake.lib import flavorutil
 from rmake.lib import logger
 from rmake.lib import server
-from rmake.server import publish
-
+from rmake.lib.apiutils import api, api_parameters, api_return
 from rmake.messagebus import busclient
-
 from rmake.multinode import messages
 from rmake.multinode import nodeclient
 from rmake.multinode import nodetypes
@@ -58,13 +48,6 @@ class DispatcherServer(server.Server):
                 cfg.messageBusPort, cfg, self)
         server.Server.__init__(self, self.client.getLogger())
         subscriberLog = logger.Logger('subscriber', cfg.getSubscriberLogPath())
-
-        # In multinode rMake, publishing events to external subscribers
-        # is done by a process forked from the dispatcher (since the
-        # dispatcher gets all events anyway) instead of passing them
-        # back to the rMake XMLRPC front end.
-        self._publisher = publish._RmakeServerPublisher(subscriberLog,
-                                                        db, self._fork)
         # detaile data about the nodes is stored in the NodeList.
         self._nodes = NodeList(db, self._logger)
 
@@ -208,19 +191,10 @@ class DispatcherServer(server.Server):
         """
             Entry point from messagebus client that new events were sent.
         """
-        # send all events to the publisher, which will send them
-        # off to connected subscribers.
-        self._publisher.addEvent(jobId, eventList)
+        pass
 
     def _serveLoopHook(self):
-        self._publisher.emitEvents()
         self._collectChildren()
-
-    def _pidDied(self, pid, status, name=None):
-        server.Server._pidDied(self, pid, status, name=name)
-        if pid == self._publisher._emitPid: # rudimentary locking for emits
-            self._publisher._emitPid = 0    # only allow one emitEvent process
-                                            # at a time.
 
     def serve(self):
         self.serve_forever()

@@ -24,8 +24,6 @@ SUBDIRS=
 all: default-subdirs default-all
 
 install: all install-subdirs pyfiles-install default-install
-	$(PYTHON) -c "import compileall; compileall.compile_dir('$(DESTDIR)$(sitedir)/rmake/node', ddir='$(sitedir)/rmake/node', quiet=1)"
-	$(PYTHON) -OO -c "import compileall; compileall.compile_dir('$(DESTDIR)$(sitedir)/rmake/node', ddir='$(sitedir)/rmake/node', quiet=1)"
 
 
 dist: default-dist

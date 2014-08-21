@@ -42,10 +42,9 @@ from rmake.multinode.server import messagebus
 from rmake.multinode.server import subscriber as mn_subscriber
 from rmake.multinode.server import workerproxy
 from rmake.server import auth
-from rmake.server import publish
 from rmake.db import database
 from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw
-from rmake.lib.apiutils import api_nonforking, allow_anonymous
+from rmake.lib.apiutils import allow_anonymous
 from rmake.lib import apirpc
 from rmake.lib import logger
 
@@ -310,16 +309,6 @@ class rMakeServer(apirpc.XMLApiServer):
         host = self.cfg.getMessageBusHost(qualified=True)
         return dict(host=host, port=self.cfg.messageBusPort)
 
-    # --- callbacks from Builders
-
-    @api(version=1)
-    @api_parameters(1, None, 'EventList')
-    @api_nonforking
-    def emitEvents(self, callData, jobId, (apiVer, eventList)):
-        # currently we assume that this apiVer is extraneous, just
-        # a part of the protocol for EventLists.
-        self._publisher.addEvent(jobId, eventList)
-
     # --- internal functions
 
     def getBuilder(self, job):
@@ -377,8 +366,6 @@ class rMakeServer(apirpc.XMLApiServer):
                 job.exceptionOccurred('Failed while initializing',
                                       traceback.format_exc())
             break
-        if self._publisher:
-            self._publisher.emitEvents()
         self._collectChildren()
         if self._nodeClient:
             self._nodeClient.poll()
@@ -531,10 +518,6 @@ class rMakeServer(apirpc.XMLApiServer):
                 self._failJob(jobId, self._getExitMessage(pid, status, name))
         apirpc.XMLApiServer._pidDied(self, pid, status, name)
 
-        if pid == self._publisher._emitPid: # rudimentary locking for emits
-            self._publisher._pidDied(pid, status)  # only allow one
-                                                   # emitEvent process
-                                                   # at a time.
         for attr, descr, logpath in [
                 ('proxyPid', 'proxy', self.cfg.getProxyLogPath()),
                 ('repositoryPid', 'repository', self.cfg.getReposLogPath()),
@@ -696,7 +679,6 @@ class rMakeServer(apirpc.XMLApiServer):
         self._messageBusPid = None
         self._dispatcherPid = None
         self._nodeClient = None
-        self._publisher = None
         serverLogger.info('*** Started rMake Server at pid %s (serving at %s)' % (os.getpid(), uri))
         try:
             self._initialized = False
@@ -731,9 +713,6 @@ class rMakeServer(apirpc.XMLApiServer):
             # any jobs that were running before are not running now
             subscriberLog = logger.Logger('susbscriber',
                                           self.cfg.getSubscriberLogPath())
-            self._publisher = publish._RmakeServerPublisher(subscriberLog,
-                                                            self.db,
-                                                            self._fork)
             self.worker = workerproxy.WorkerProxy(self.cfg, self._nodeClient,
                     self._logger)
             dbLogger = subscriber._JobDbLogger(self.db)

@@ -18,18 +18,16 @@
 import itertools
 import os
 
-from conary.lib.sha1helper import md5FromString
 from conary import dbstore
 
 from rmake import errors
-from rmake.build import buildcfg
 from rmake.build.subscriber import _JobDbLogger
 from rmake.db import authcache
 from rmake.db import schema
 from rmake.db import jobstore
 from rmake.db import logstore
 from rmake.db import nodestore
-from rmake.db import subscriber
+
 
 class DBInterface(object):
     def __init__(self, db):
@@ -103,7 +101,6 @@ class Database(DBInterface):
         self.jobStore = jobstore.JobStore(self)
         self.logStore = logstore.LogStore(contentsPath + '/logs')
         self.jobQueue = jobstore.JobQueue(self)
-        self.subscriberStore = subscriber.SubscriberData(self)
         self.nodeStore = nodestore.NodeStore(self)
 
     def loadSchema(self, migrate=True):
@@ -124,11 +121,7 @@ class Database(DBInterface):
         _JobDbLogger(self).attach(job)
 
     def addJob(self, job):
-        jobId = self.jobStore.addJob(job)
-        cfg = job.getMainConfig()
-        if cfg:
-            for subscriber in cfg.subscribe.values():
-                self.subscriberStore.add(jobId, subscriber)
+        self.jobStore.addJob(job)
         self.commit()
         return job
 
@@ -225,31 +218,6 @@ class Database(DBInterface):
 
     def getJobConfig(self, jobId):
         return self.jobStore.getJobConfig(jobId)
-
-    def getSubscriber(self, subscriberId):
-        return self.subscriberStore.get(subscriberId)
-
-    def getSubscribersForEvents(self, jobId, eventList):
-        subscribers = self.subscriberStore.getMatches(jobId, eventList)
-        return subscribers
-
-    def listSubscribers(self, jobId):
-        subscribers = self.subscriberStore.getByJobId(jobId)
-        return subscribers
-
-
-    def listSubscribersByUri(self, jobId, uri):
-        subscribers = self.subscriberStore.getByUri(jobId, uri)
-        return subscribers
-
-    def addSubscriber(self, jobId, subscriber):
-        self.subscriberStore.add(jobId, subscriber)
-        self.db.commit()
-        # subscriber object is modified to store subscriberId
-
-    def removeSubscriber(self, subscriberId):
-        self.subscriberStore.remove(subscriberId)
-        self.db.commit()
 
     def listJobs(self, activeOnly=False, jobLimit=None):
         return self.jobStore.listJobs(activeOnly, jobLimit)

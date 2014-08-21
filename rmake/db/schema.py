@@ -22,7 +22,8 @@ SQL schema for the persistent DB store for rmake
 from rmake import errors
 
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
+
 
 def createJobs(db):
     cu = db.cursor()
@@ -91,57 +92,6 @@ def createTroveSettings(db):
     if db.createIndex("TroveSettings", "TroveSettingsIdx2", "troveId",
                       unique = False):
         commit = True
-    return commit
-
-
-def createSubscriber(db):
-    cu = db.cursor()
-    commit = False
-    if "Subscriber" not in db.tables:
-        cu.execute("""
-         CREATE TABLE Subscriber(
-             subscriberId  %(PRIMARYKEY)s,
-             jobId         INTEGER,
-             uri           TEXT  NOT NULL
-         )""" % db.keywords)
-        db.tables["Subscriber"] = []
-        commit = True
-
-    if db.createIndex("Subscriber", "SubscriberJobIdx", "jobId"):
-        commit = True
-
-    if "SubscriberEvents" not in db.tables:
-        cu.execute("""
-        CREATE TABLE SubscriberEvents (
-            subscriberId  INTEGER NOT NULL,
-            event         TEXT  NOT NULL,
-            subevent      TEXT  NOT NULL
-        )""" % db.keywords)
-        db.tables["SubscriberEvents"] = []
-        commit = True
-
-
-    if db.createIndex("SubscriberEvents", "SubscriberEventsIdx",
-                      "subscriberId"):
-        commit = True
-
-
-    if db.createIndex("SubscriberEvents", "SubscriberEventsEventIdx",
-                      "event,subevent"):
-        commit = True
-
-    if "SubscriberData" not in db.tables:
-        cu.execute("""
-        CREATE TABLE SubscriberData (
-            subscriberId  integer  NOT NULL,
-            data          TEXT  NOT NULL
-        )""" % db.keywords)
-        db.tables["SubscriberData"] = []
-        commit = True
-
-    if db.createIndex("SubscriberData", "SubscriberDataIdx", "subscriberId"):
-        commit = True
-
     return commit
 
 
@@ -431,7 +381,6 @@ class SchemaManager(AbstractSchemaManager):
         changed |= createTroveSettings(db)
         changed |= createBinaryTroves(db)
         changed |= createStateLogs(db)
-        changed |= createSubscriber(db)
         changed |= createJobQueue(db)
         changed |= createChroots(db)
         changed |= createNodes(db)
@@ -521,8 +470,7 @@ class Migrator(AbstractMigrator):
     def migrateFrom11(self):
         if self.db.driver == 'sqlite':
             cu = self.db.cursor()
-            for table in ['Jobs', 'Subscriber', 'SubscriberData', 'BuildTroves',
-                    'StateLogs', 'Chroots', 'AuthCache']:
+            for table in ['Jobs', 'BuildTroves', 'StateLogs', 'Chroots', 'AuthCache']:
                 self._rebuildTable(table)
             cu.execute("""UPDATE Jobs SET failureReason = NULL,
                     failureData = NULL WHERE failureReason = ''""")
@@ -530,6 +478,13 @@ class Migrator(AbstractMigrator):
                     failureData = NULL WHERE failureReason = ''""")
             cu.execute("UPDATE StateLogs SET troveId = NULL WHERE troveId = 0")
         return 12
+
+    def migrateFrom12(self):
+        cu = self.db.cursor()
+        for table in ['SubscriberEvents', 'SubscriberData', 'Subscriber']:
+            cu.execute("DROP TABLE " + table)
+        return 13
+
 
 class PluginSchemaManager(AbstractSchemaManager):
     """

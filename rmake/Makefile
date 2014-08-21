@@ -40,7 +40,6 @@ install-client: install
 install: all install-subdirs pyfiles-install default-install
 	$(INSTALL) constants.py $(DESTDIR)$(rmakedir)/constants.py
 	$(PYTHON) -c "import compileall; compileall.compile_dir('$(DESTDIR)$(rmakedir)', ddir='$(rmakedir)', quiet=1)"
-	$(PYTHON) -OO -c "import compileall; compileall.compile_dir('$(DESTDIR)$(rmakedir)', ddir='$(rmakedir)', quiet=1)"
 
 dist: default-dist
 
