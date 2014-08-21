@@ -21,11 +21,9 @@ xmlrpc calls.
 """
 
 import inspect
-import itertools
 import traceback
 
 from conary import versions
-from conary.deps import deps
 from conary.deps.deps import ThawFlavor
 from conary.deps.deps import ThawDependencySet
 from conary.lib import util

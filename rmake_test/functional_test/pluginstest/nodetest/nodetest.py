@@ -153,8 +153,7 @@ class NodeTest2(rmakehelp.RmakeHelper):
 
     def testNodeServerSlowToConnect(self):
         from rmake.multinode import workernode
-        from rmake.worker import command
-        from rmake_plugins.multinode_client.server import client
+        from rmake.server import client
         fclient = mock.MockObject()
         self.mock(client, 'rMakeClient', fclient)
         mock.mock(time, 'sleep') #Otherwise we wait 5 seconds for no good reason

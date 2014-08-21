@@ -14,18 +14,12 @@
 # limitations under the License.
 #
 
-
-import select
 import time
-import urllib
-from conary.lib import util
 
-from rmake import subscribers
 from rmake.build import buildjob
 from rmake.build import buildtrove
-from rmake.errors import InsufficientPermission
-from rmake.lib import apirpc, rpclib
-from rmake.lib.apirpc import NoSuchMethodError
+from rmake.errors import InsufficientPermission, RmakeError
+from rmake.lib import apirpc
 from rmake.lib.apiutils import thaw, freeze
 from rmake.multinode import messages
 from rmake.multinode import nodeclient
@@ -199,16 +193,6 @@ class rMakeClient(object):
         return [ thaw('BuildJob', x)
                  for x in self.proxy.getJobs(jobIds, withTroves, withConfigs) ]
 
-    def listSubscribers(self, jobId):
-        """
-            Return subscribers for jobId
-            @param jobId: jobId or UUID for job.
-            @rtype: list of build.subscriber.Subscriber instances.
-            @raises: JobNotFound if job does not exist.
-        """
-        return [ thaw('Subscriber', x)
-                  for x in self.proxy.listSubscribers(jobId) ]
-
     def listChroots(self):
         return [ thaw('Chroot', x)
                   for x in self.proxy.listChroots() ]
@@ -234,27 +218,6 @@ class rMakeClient(object):
         from rmake.lib import telnetclient
         t = telnetclient.TelnetClient(host, port)
         return t
-
-    def subscribe(self, jobId, subscriber):
-        """
-            Add subscriber to jobId.
-            Subscribers are notified of events that happen to a given job, 
-            and can be used to report or act on those events.
-
-            @param jobId: jobId or UUID for job.
-            @raises: JobNotFound if job does not exist.
-        """
-        subscriberId = self.proxy.subscribe(jobId, subscriber)
-        subscriber.subscriberId = subscriberId
-
-    def unsubscribe(self, subscriberId):
-        """
-            Remove subscriber from jobId.
-
-            @param jobId: jobId or UUID for job.
-            @raises: JobNotFound if job does not exist.
-        """
-        self.proxy.unsubscribe(subscriberId)
 
     def startCommit(self, jobIds):
         """
@@ -357,101 +320,17 @@ class rMakeClient(object):
             return None
         return MessageBusInfo(**rv)
 
-    def listenToEvents(self, uri, jobId, listener,
-                       showTroveDetails=False,
-                       serve=True):
+    def listenToEvents(self, uri, jobId, listener, showTroveDetails=False,
+            serve=True):
         info = self.getMessageBusInfo()
         if not info:
-            return self.standaloneListenToEvents(uri, jobId, listener=listener,
-                                             showTroveDetails=showTroveDetails)
-        else:
-            receiver = EventReceiver(jobId, info.host, info.port, listener)
-            receiver.connect()
-            if serve:
-                receiver.serve_forever()
-            return receiver
-
-
-class XMLRPCJobLogReceiver(object):
-    def __init__(self, listener, uri=None, client=None,
-                 showTroveDetails=False):
-        self.uri = uri
-        self.client = client
-        self.showTroveDetails = showTroveDetails
-        self.listener = listener
-        serverObj = None
-
-        if uri:
-            if isinstance(uri, str):
-                type, url = urllib.splittype(uri)
-                if type == 'unix':
-                    util.removeIfExists(url)
-                    serverObj = rpclib.UnixDomainDelayableXMLRPCServer(url,
-                                                       logRequests=False)
-                elif type in ('http', 'https'):
-                    # path is ignored with simple server.
-                    host, path = urllib.splithost(url)
-                    if ':' in host:
-                        host, port = urllib.splitport(host)
-                        port = int(port)
-                    else:
-                        port = 0
-                    serverObj = rpclib.DelayableXMLRPCServer(('', port))
-                    if not port:
-                        uri = '%s://%s:%s' % (type, host,
-                                                   serverObj.getPort())
-                else:
-                    raise NotImplementedError
-            else:
-                serverObj = uri
-        self.uri = uri
-        self.server = serverObj
-
-        if serverObj:
-            serverObj.register_instance(self)
-
-    def _dispatch(self, methodname, (callData, responseHandler, args)):
-        if methodname.startswith('_'):
-            raise NoSuchMethodError(methodname)
-        else:
-            responseHandler.sendResponse('')
-            getattr(self.listener, methodname)(*args)
-
-    def subscribe(self, jobId):
-        subscriber = subscribers.SubscriberFactory('monitor_', 'xmlrpc', self.uri)
-        subscriber.watchEvent('JOB_STATE_UPDATED')
-        subscriber.watchEvent('JOB_LOG_UPDATED')
-        if self.showTroveDetails:
-            subscriber.watchEvent('TROVE_STATE_UPDATED')
-            subscriber.watchEvent('TROVE_LOG_UPDATED')
-            subscriber.watchEvent('TROVE_PREPARING_CHROOT')
-        self.jobId = jobId
-        self.subscriber = subscriber
-        self.client.subscribe(jobId, subscriber)
-        self.listener._primeOutput(self.jobId)
-
-    def serve_forever(self):
-        try:
-            while True:
-                self.handleRequestIfReady(1)
-                self._serveLoopHook()
-                if self.listener._shouldExit():
-                    break
-        finally:
-            self.unsubscribe()
-
-    def handleRequestIfReady(self, sleepTime=0.1):
-        ready, _, _ = select.select([self.server], [], [], sleepTime)
-        if ready:
-            self.server.handle_request()
-
-    def _serveLoopHook(self):
-        self.listener._serveLoopHook()
-
-    def unsubscribe(self):
-        self.listener.close()
-        if self.client:
-            self.client.unsubscribe(self.subscriber.subscriberId)
+            raise RmakeError("Can't subscribe to old, non-multinode server. "
+                    "Upgrade to 2.2 or later.")
+        receiver = EventReceiver(jobId, info.host, info.port, listener)
+        receiver.connect()
+        if serve:
+            receiver.serve_forever()
+        return receiver
 
 
 class EventReceiver(nodeclient.NodeClient):

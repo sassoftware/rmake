@@ -22,12 +22,6 @@ Loading, etc.  For tests of server-side, client side plugins, look in
 servertest and cmdlinetest.
 """
 
-import re
-import os
-import sys
-import time
-
-
 from rmake_test import rmakehelp
 
 from conary.lib import util

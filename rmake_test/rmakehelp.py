@@ -23,7 +23,6 @@ import os
 import re
 import shutil
 import signal
-import sys
 import tempfile
 import time
 import traceback
@@ -262,10 +261,6 @@ class RmakeHelper(rephelp.RepositoryHelper, PluginTest):
         self.rbaServerPid = None
         self.mockRbuilder = None
 
-        pluginservercfg = sys.modules.get('rmake_plugins.multinode.server.servercfg')
-        if pluginservercfg:
-            pluginservercfg.resetConfig()
-
     def stopRmakeServer(self):
         self._kill(self.rmakeServerPid, useCoverage=False)
         self.rmakeServerPid = None
@@ -484,29 +479,17 @@ class RmakeHelper(rephelp.RepositoryHelper, PluginTest):
     def getAdminClient(self, messageBusPort=None):
         if not messageBusPort:
             messageBusPort = self.rmakeCfg.messageBusPort
-        self.pluginMgr.enablePlugin('multinode')
-        self.pluginMgr.installImporter()
         from rmake.messagebus import busclient
         from rmake.multinode import admin
-        self.pluginMgr.uninstallImporter()
-        self.pluginMgr.disablePlugin('multinode')
         b = busclient.MessageBusClient('localhost', messageBusPort, None,
-                                       connectionTimeout=10)
+                connectionTimeout=10)
         b.logger.setQuietMode()
         adminClient =  admin.MessageBusAdminClient(b)
         return adminClient
 
     def startRmakeServer(self, reposName=None, multinode=False, 
-                         protocol = 'unix'):
+                         protocol = 'http'):
 
-        if multinode:
-            from rmake_plugins.multinode_client.build import buildcfg
-            from rmake_plugins.multinode_client.server import client
-            from rmake_plugins.multinode.server import servercfg
-            buildcfg.updateConfig()
-            servercfg.updateConfig()
-        else:
-            from rmake.server import client
         if protocol == 'unix':
             fd, path = tempfile.mkstemp(prefix='socket-', dir=self.rootDir)
             os.unlink(path)
@@ -540,10 +523,9 @@ class RmakeHelper(rephelp.RepositoryHelper, PluginTest):
         buildCfg.rmakeUrl = clientUri
         rmakeClient = client.rMakeClient(clientUri)
 
-        if multinode:
-            port,  = testhelp.findPorts()
-            rmakeCfg.messageBusHost = None
-            rmakeCfg.messageBusPort = port
+        port,  = testhelp.findPorts()
+        rmakeCfg.messageBusHost = None
+        rmakeCfg.messageBusPort = port
 
         assert(not self.rmakeServerPid)
         pid = os.fork()
@@ -558,10 +540,6 @@ class RmakeHelper(rephelp.RepositoryHelper, PluginTest):
                 return rmakeClient
         else:
             try:
-                if multinode:
-                    self.pluginMgr.enablePlugin('multinode')
-                elif self.pluginMgr.hasPlugin('multinode'):
-                    self.pluginMgr.disablePlugin('multinode')
                 log.setVerbosity(log.DEBUG)
                 logFile = logfile.LogFile(self.rmakeCfg.logDir + '/rmake-out.log')
                 logFile.redirectOutput()
@@ -876,19 +854,14 @@ class RmakeHelper(rephelp.RepositoryHelper, PluginTest):
         return newFlavor
 
     def subscribeServer(self, client, job, multinode=False):
-        if multinode:
-            from rmake_plugins.multinode.build import builder
-            from rmake.multinode.server import subscriber
-            client = builder.BuilderNodeClient(self.rmakeCfg, job.jobId,
-                                                 job)
-            publisher = subscriber._RmakeBusPublisher(client)
-            publisher.attach(job)
-            while not client.bus.isRegistered():
-                client.serve_once()
-            return publisher
-        else:
-            from rmake.build import subscriber
-            subscriber._RmakeServerPublisherProxy(client.uri).attach(job)
+        from rmake.multinode.server import builderproxy
+        from rmake.multinode.server import subscriber
+        client = builderproxy.BuilderNodeClient(self.rmakeCfg, job.jobId, job)
+        publisher = subscriber._RmakeBusPublisher(client)
+        publisher.attach(job)
+        while not client.bus.isRegistered():
+            client.serve_once()
+        return publisher
 
     def startMockRbuilder(self):
         rbuilder = mockrbuilder.MockRbuilder(testhelp.findPorts()[0],

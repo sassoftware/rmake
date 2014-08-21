@@ -28,7 +28,6 @@ from rmake.lib.pluginlib import Plugin
 
 TYPE_CLIENT = 0
 TYPE_SERVER = 1
-TYPE_SUBSCRIBER = 2
 TYPE_LIBRARY = 3
 
 class ClientPlugin(Plugin):
@@ -96,17 +95,6 @@ class ServerPlugin(Plugin):
     def server_shutDown(self, server):
         """
             Called when the server is halting.
-        """
-        pass
-
-class SubscriberPlugin(Plugin):
-
-    types = [TYPE_SUBSCRIBER]
-    protocol = None
-
-    def subscriber_get(self, uri, name):
-        """
-            Should return a child of the StatusSubscirber class.
         """
         pass
 

@@ -26,8 +26,6 @@ from rmake_test import rmakehelp
 class AuthenticationTest(rmakehelp.RmakeHelper):
 
     def testBasic(self):
-        self.pluginMgr.enablePlugin('multinode')
-        self.pluginMgr.installImporter()
         repos = self.openRepository()
         rmakeClient = self.startRmakeServer(protocol='http', multinode=True)
         assert(not rmakeClient.listJobs())
@@ -62,8 +60,6 @@ class AuthenticationTest(rmakehelp.RmakeHelper):
                 return origUrlOpen(url)
                 
         self.mock(urllib2, 'urlopen', urlopen)
-        self.pluginMgr.enablePlugin('multinode')
-        self.pluginMgr.installImporter()
         repos = self.openRepository()
         rmakeClient = self.startRmakeServer(protocol='http', multinode=True)
         self.buildCfg.rmakeUser = ('test', 'foo') # working user/pass

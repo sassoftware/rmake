@@ -183,38 +183,6 @@ class rMakeServer(apirpc.XMLApiServer):
         return deletedJobIds
 
     @api(version=1)
-    @api_parameters(1, None, 'Subscriber')
-    @api_return(1, 'int')
-    def subscribe(self, callData, jobId, subscriber):
-        jobId = self.db.convertToJobId(jobId)
-        self.db.addSubscriber(jobId, subscriber)
-        return subscriber.subscriberId
-
-    @api(version=1)
-    @api_parameters(1, 'int')
-    @api_return(1, 'Subscriber')
-    def unsubscribe(self, callData, subscriberId):
-        subscriber = self.db.getSubscriber(subscriberId)
-        self.db.removeSubscriber(subscriberId)
-        return subscriber
-
-    @api(version=1)
-    @api_parameters(1, None, 'str')
-    @api_return(1, None)
-    def listSubscribersByUri(self, callData, jobId, uri):
-        jobId = self.db.convertToJobId(jobId)
-        subscribers = self.db.listSubscribersByUri(jobId, uri)
-        return [ freeze('Subscriber', x) for x in subscribers ]
-
-    @api(version=1)
-    @api_parameters(1, None)
-    @api_return(1, None)
-    def listSubscribers(self, callData, jobId):
-        jobId = self.db.convertToJobId(jobId)
-        subscribers = self.db.listSubscribers(jobId)
-        return [ freeze('Subscriber', x) for x in subscribers ]
-
-    @api(version=1)
     @api_parameters(1)
     @api_return(1, None)
     def listChroots(self, callData):
@@ -433,7 +401,7 @@ class rMakeServer(apirpc.XMLApiServer):
             return True
 
     def _authCheck(self, callData, fn, *args, **kw):
-        if getattr(fn, 'allowAnonymousAccess', None):
+        if getattr(fn, 'allowAnonymousAccess', None) or callData.auth is None:
             return True
         if (callData.auth.getSocketUser()
           or callData.auth.getCertificateUser()):
@@ -513,6 +481,8 @@ class rMakeServer(apirpc.XMLApiServer):
         if self.uri is None:
             self.warning('Cannot fail current jobs without a URI')
             return False
+        if not jobs:
+            return
         from rmake.server.client import rMakeClient
         pid = self._fork('Fail current jobs')
         if pid:

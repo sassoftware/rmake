@@ -37,7 +37,7 @@ from conary.lib.cfgtypes import (CfgBool, CfgList, CfgDict, CfgString,
 
 from rmake.cmdline import cmdutil
 from rmake.lib import apiutils, logger
-from rmake import compat, errors, subscribers
+from rmake import compat
 
 
 class CfgDependency(CfgType):
@@ -81,27 +81,6 @@ class CfgTroveTupleWithContext(CfgType):
     def format(self, val, displayOptions=None):
         return '%s=%s[%s]{%s}' % val
 
-
-class CfgSubscriberDict(CfgDict):
-    def parseValueString(self, key, value):
-        return self.valueType.parseString(key, value)
-
-class CfgSubscriber(CfgType):
-
-    def parseString(self, name, val):
-        protocol, uri = val.split(None, 1)
-        try:
-            s = subscribers.SubscriberFactory(name, protocol, uri)
-        except errors.RmakeError, err:
-            raise ParseError(err)
-        return s
-
-    def updateFromString(self, s, str):
-        s.parse(*str.split(None, 1))
-        return s
-
-    def toStrings(self, s, displayOptions):
-        return s.freezeData()
 
 class CfgUUID(CfgType):
 
@@ -164,7 +143,7 @@ class RmakeBuildContext(cfg.ConfigSection):
             "INTERNAL USE ONLY: Dep provided by the RPM to be used for "
             "installation of the chroot.")
     strictMode           = (CfgBool, False)
-    subscribe            = (CfgSubscriberDict(CfgSubscriber), {})
+    subscribe            = CfgDict(CfgString)
     targetLabel          = (CfgLabel, versions.Label('NONE@local:NONE'))
     uuid                 = (CfgUUID, '')
 
@@ -501,7 +480,7 @@ class SanitizedBuildConfiguration(object):
         cfg = apiutils.freeze('BuildConfiguration', cfg)
         cfg['user'] = []
         cfg['entitlement'] = []
-        del cfg['rmakeUser']
+        cfg['rmakeUser'] = None
         return cfg
 
     @staticmethod

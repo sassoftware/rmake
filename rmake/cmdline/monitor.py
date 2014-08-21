@@ -22,7 +22,8 @@ import tempfile
 import time
 
 from rmake.build import buildjob, buildtrove
-from rmake.subscribers import xmlrpc
+from rmake.lib import subscriber
+
 
 def _getUri(client):
     if not isinstance(client.uri, str) or client.uri.startswith('unix://'):
@@ -70,7 +71,38 @@ def waitForJob(client, jobId, uri=None, serve=True):
         if tmpPath:
             os.remove(tmpPath)
 
-class _AbstractDisplay(xmlrpc.BasicXMLRPCStatusSubscriber):
+
+class StatusSubscriber(subscriber.Subscriber):
+    listeners = {
+        'JOB_STATE_UPDATED'     : '_jobStateUpdated',
+        'JOB_LOG_UPDATED'       : '_jobLogUpdated',
+        'JOB_TROVES_SET'        : '_jobTrovesSet',
+        'TROVE_STATE_UPDATED'   : '_troveStateUpdated',
+        'TROVE_LOG_UPDATED'     : '_troveLogUpdated',
+        'TROVE_PREPARING_CHROOT' : '_trovePreparingChroot',
+    }
+
+    def _jobTrovesSet(self, jobId, troveList):
+        pass
+
+    def _jobStateUpdated(self, jobId, state, status):
+        pass
+
+    def _jobLogUpdated(self, jobId, state, status):
+        pass
+
+    def _troveStateUpdated(self, (jobId, troveTuple), state, status):
+        pass
+
+    def _troveLogUpdated(self, (jobId, troveTuple), state, status):
+        pass
+
+    def _trovePreparingChroot(self, (jobId, troveTuple), host, path):
+        pass
+
+
+class _AbstractDisplay(StatusSubscriber):
+
     def __init__(self, client, showBuildLogs=True, out=None,
                  exitOnFinish=True):
         self.client = client

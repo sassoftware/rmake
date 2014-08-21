@@ -15,9 +15,8 @@
 #
 
 
-from rmake.lib import apiutils
 from rmake import constants
-from rmake import subscribers
+
 
 class Subscriber(object):
 
@@ -70,38 +69,7 @@ class _AbstractStatusSubscriber(Subscriber):
         return False
 
 
-class FreezableStatusSubscriberMixin(object):
-
-    def freezeData(self):
-        lst = [ '%s %s' % (self.protocol, self.uri) ]
-        lst.append('apiVersion %s' % self.apiVersion)
-        for event, subEvents in self.iterEvents():
-            if subEvents:
-                lst.append('event %s+%s' % (event, ','.join(subEvents)))
-            else:
-                lst.append('event %s' % (event))
-        for field, data in self.iteritems():
-            if data != self.fields[field]:
-                lst.append('%s %s' % (field, data))
-        return lst
-
-    def __freeze__(self):
-        return (self.subscriberId, self.freezeData())
-
-    @staticmethod
-    def __thaw__(frz):
-        subscriberId, data = frz
-        protocol, uri = data[0].split(None, 1)
-        new = subscribers.SubscriberFactory(subscriberId, protocol, uri)
-        for line in data[1:]:
-            field, val = line.split(None, 1)
-            new.parse(field, val)
-        return new
-
-
-
-class StatusSubscriber(_AbstractStatusSubscriber, 
-                       FreezableStatusSubscriberMixin):
+class StatusSubscriber(_AbstractStatusSubscriber):
 
     def parse(self, field, data):
         if field not in self.fields:
@@ -125,6 +93,3 @@ class StatusSubscriber(_AbstractStatusSubscriber,
         s = self.__class__(self.subscriberId, self.uri)
         [ s.parse(*x.split(None, 1)) for x in self.freezeData()[1:] ]
         return s
-
-
-apiutils.register(apiutils.api_freezable(StatusSubscriber), name='Subscriber')

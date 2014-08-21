@@ -18,7 +18,6 @@
 """
 rMake, build utility for conary - plugin support
 """
-from rmake import subscribers
 from rmake.lib import pluginlib
 from rmake.plugins.plugin import *
 
@@ -29,8 +28,6 @@ class PluginManager(pluginlib.PluginManager):
 
     def loadPlugins(self):
         pluginlib.PluginManager.loadPlugins(self)
-        # make subscriber plugins available.
-        subscribers.loadPlugins(self.getPluginsByType(TYPE_SUBSCRIBER))
 
     def callClientHook(self, hookName, *args, **kw):
         self.callHook(TYPE_CLIENT, hookName, *args, **kw)
@@ -41,8 +38,6 @@ class PluginManager(pluginlib.PluginManager):
     def callServerHook(self, hookName, *args, **kw):
         self.callHook(TYPE_SERVER, hookName, *args, **kw)
 
-    def callSubscriberHook(self, hookName, *args, **kw):
-        self.callHook(TYPE_SUBSCRIBER, hookName, *args, **kw)
 
 def getPluginManager(argv, configClass):
     """

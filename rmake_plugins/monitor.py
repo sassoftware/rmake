@@ -34,7 +34,6 @@ from rmake import errors
 from rmake.build import buildjob, buildtrove
 from rmake.cmdline import query
 from rmake.lib.apirpc import NoSuchMethodError
-from rmake.subscribers import xmlrpc
 
 from rmake.cmdline import monitor
 from rmake.plugins import plugin
@@ -74,7 +73,8 @@ def restore_terminal(oldTerm, oldFlags):
         fcntl.fcntl(fd, fcntl.F_SETFL, oldFlags)
 
 
-class _AbstractDisplay(xmlrpc.BasicXMLRPCStatusSubscriber):
+class _AbstractDisplay(monitor.StatusSubscriber):
+
     def __init__(self, client, showBuildLogs=True, out=None):
         self.client = client
         self.finished = False
@@ -311,7 +311,9 @@ class OutBuffer(object):
             else:
                 self.data.pop(0)
 
-class DisplayState(xmlrpc.BasicXMLRPCStatusSubscriber):
+
+class DisplayState(monitor.StatusSubscriber):
+
     def __init__(self, client):
         self.troves = []
         self.states = {}
@@ -403,7 +405,8 @@ class DisplayState(xmlrpc.BasicXMLRPCStatusSubscriber):
         return self.jobState in (
                     buildjob.JOB_STATE_FAILED, buildjob.JOB_STATE_BUILT)
 
-class DisplayManager(xmlrpc.BasicXMLRPCStatusSubscriber):
+
+class DisplayManager(monitor.StatusSubscriber):
 
     displayClass = JobLogDisplay
     stateClass = DisplayState
