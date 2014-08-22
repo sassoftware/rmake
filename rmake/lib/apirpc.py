@@ -43,15 +43,12 @@ import select
 import socket
 import sys
 import time
-import traceback
-import urllib
 
 from conary.lib import coveragehook
 
 from rmake import constants, errors
 
 from rmake.lib import apiutils
-from rmake.lib import localrpc
 from rmake.lib import rpclib
 from rmake.lib import rpcproxy
 from rmake.lib import server

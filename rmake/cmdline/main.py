@@ -21,7 +21,6 @@ Simple client that communicates with rMake.
 """
 
 import errno
-import os
 import sys
 
 

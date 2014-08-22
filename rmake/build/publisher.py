@@ -21,15 +21,7 @@
     changes.
 """
 
-import traceback
-
-from conary.lib import log
-
-from rmake.lib import apirpc
-from rmake.lib import apiutils
 from rmake.lib import publisher
-from rmake.lib import subscriber
-from rmake.lib.apiutils import thaw, freeze
 
 
 class JobStatusPublisher(publisher.Publisher):

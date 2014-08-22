@@ -33,7 +33,6 @@ from rmake.messagebus import logger
 from rmake.messagebus import messages
 from rmake.messagebus import messageprocessor
 from rmake.messagebus import rpclib
-from rmake.messagebus.rpclib import SessionProxy
 
 
 def BusClientFormatterFactory(instance):

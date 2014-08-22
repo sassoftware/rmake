@@ -18,12 +18,11 @@
 import copy
 import fnmatch
 import itertools
-import re
 import os
 import shutil
 import tempfile
 
-from conary.build import cook, lookaside, grouprecipe, recipe, use
+from conary.build import cook, grouprecipe, recipe, use
 from conary.build.cook import signAbsoluteChangeset
 from conary.conaryclient import cmdline
 from conary.deps import deps

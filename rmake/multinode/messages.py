@@ -15,9 +15,6 @@
 #
 
 
-from conary.deps import deps
-
-from rmake.build import buildcfg, buildtrove
 from rmake.lib.apiutils import thaw, freeze
 from rmake.messagebus.messages import *
 from rmake.multinode import nodetypes

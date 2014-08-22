@@ -20,7 +20,6 @@ Commit command
 """
 import itertools
 import os
-import shutil
 import tempfile
 
 from conary import checkin

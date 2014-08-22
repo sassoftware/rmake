@@ -24,12 +24,11 @@
     list at the bottom of this page.
 """
 from conary.conaryclient import cmdline
-from conary.deps import deps
 from conary import versions
 from conary.deps.deps import ThawFlavor
 
 from rmake.lib import apiutils
-from rmake.lib.apiutils import freeze, thaw
+
 
 FAILURE_REASON_FAILED         = 0
 FAILURE_REASON_BUILD_FAILED   = 1

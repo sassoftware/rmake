@@ -20,7 +20,6 @@ The worker is in charge of taking build requests and monitoring them
 until they complete.
 """
 import select
-import time
 import traceback
 
 from rmake.lib import pipereader

@@ -25,8 +25,7 @@ from rmake.build import buildjob
 from rmake.build import buildtrove
 
 from rmake.build.buildtrove import TROVE_STATE_INIT
-from rmake.build.buildjob import JOB_STATE_FAILED, JOB_STATE_INIT, \
-     JOB_STATE_QUEUED, JOB_STATE_STARTED, JOB_STATE_BUILD, JOB_STATE_BUILT
+from rmake.build.buildjob import JOB_STATE_STARTED, JOB_STATE_BUILD
 
 
 from rmake.lib.apiutils import freeze, thaw

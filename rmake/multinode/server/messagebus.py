@@ -43,7 +43,7 @@ import urllib
 
 from rmake import errors
 from rmake.lib import apirpc
-from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw
+from rmake.lib.apiutils import api, api_parameters, api_return, freeze
 from rmake.lib.daemon import daemonize, setDebugHook
 
 from rmake.messagebus import logger

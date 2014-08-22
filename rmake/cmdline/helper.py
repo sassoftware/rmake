@@ -25,26 +25,14 @@ import getpass
 import copy
 import itertools
 import os
-import socket
 import sys
-import time
 
-from optparse import OptionParser
-
-from conary import conarycfg
 from conary import conaryclient
 from conary.conaryclient import cmdline
-from conary import state
-from conary import versions
-from conary.build import use
-from conary.deps import deps
 from conary.lib import log
-from conary.lib import options
 from conary.repository import trovesource
 
-from rmake import compat
 from rmake import errors
-from rmake import plugins
 from rmake.build import buildcfg
 from rmake.build import buildjob
 from rmake.build import imagetrove
@@ -55,6 +43,7 @@ from rmake.cmdline import monitor
 from rmake.cmdline import query
 from rmake.lib import keystore
 from rmake.server import client
+
 
 class rMakeHelper(object):
     """

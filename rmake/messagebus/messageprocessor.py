@@ -14,13 +14,9 @@
 # limitations under the License.
 #
 
-
-import StringIO
-import cPickle
-import xmlrpclib
-
 from rmake.messagebus import envelope
 from rmake.messagebus import messages
+
 
 class MessageProcessor(object):
     def __init__(self):

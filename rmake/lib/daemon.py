@@ -23,10 +23,8 @@ import signal
 import sys
 import time
 
-from optparse import OptionParser
-
-from conary.conarycfg import ConfigFile, CfgList, CfgString, CfgBool, CfgInt
-from conary.lib import options, util
+from conary.conarycfg import ConfigFile, CfgBool
+from conary.lib import options
 
 from rmake.lib import logfile
 from rmake.lib import logger

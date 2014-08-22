@@ -25,7 +25,6 @@ import BaseHTTPServer
 import SocketServer
 import SimpleXMLRPCServer
 import urllib
-import IN
 import sys
 
 BUFSIZE = 1024 * 2

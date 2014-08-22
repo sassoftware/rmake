@@ -22,7 +22,6 @@ from conary.build import recipe
 from conary.conaryclient import cmdline
 from conary.deps import deps
 from conary.repository import changeset
-from conary import trove
 
 from rmake import failure
 from rmake.build import publisher

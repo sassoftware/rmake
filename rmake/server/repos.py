@@ -22,7 +22,6 @@ Wrapper for starting the repository browser
 import os
 import random
 import signal
-import socket
 import sys
 
 if __name__ == '__main__':
@@ -31,21 +30,14 @@ if __name__ == '__main__':
     if 'RMAKE_PATH' in os.environ:
         sys.path.insert(0, os.environ['RMAKE_PATH'])
 
-import tempfile
-
-from BaseHTTPServer import HTTPServer
-from SimpleHTTPServer import SimpleHTTPRequestHandler
-import urllib
 import time
 import os
 
 from conary import conarycfg
 from conary import conaryclient
 from conary import dbstore
-from conary.lib import cfg, cfgtypes, log, util
-from conary.repository import netclient
+from conary.lib import log, util
 from conary.repository.netrepos.netserver import NetworkRepositoryServer
-from conary.repository.netrepos import netauth, netserver
 from conary.repository.errors import UserNotFound
 oldExcepthook = sys.excepthook
 try:
@@ -60,11 +52,8 @@ except:
 
 sys.excepthook = oldExcepthook
 
-from conary.server import schema
-
 from rmake import compat
 from rmake import errors
-from rmake.lib import daemon
 from rmake.lib import logfile
 from rmake.server import servercfg
 

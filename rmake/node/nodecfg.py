@@ -17,17 +17,13 @@
 
 import inspect
 import os
-import pwd
 import socket
-import stat
-import sys
 
 from conary.deps import arch
 from conary.deps import deps
-from conary.lib import log, cfg
-from conary.lib.cfgtypes import CfgPath, CfgList, CfgString, CfgInt, CfgType
-from conary.lib.cfgtypes import CfgBool, CfgPathList, CfgDict, CfgEnum, CfgLineList
-from conary.conarycfg import CfgLabel, CfgUserInfo, CfgFlavor
+from conary.lib.cfgtypes import CfgPath, CfgList, CfgString, CfgType
+from conary.lib.cfgtypes import CfgBool, CfgEnum, CfgLineList
+from conary.conarycfg import CfgFlavor, ParseError
 
 from rmake.server import servercfg
 

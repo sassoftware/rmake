@@ -14,11 +14,6 @@
 # limitations under the License.
 #
 
-
-import inspect
-import sys
-import types
-
 from rmake.lib.apiutils import thaw, freeze
 
 
