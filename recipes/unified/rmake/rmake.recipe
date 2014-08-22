@@ -19,32 +19,40 @@ class RmakeRecipe(CPackageRecipe):
     name = 'rmake'
     version = '2.0.0'
 
+    plat = 'centos'
+    platver = '6'
+
     buildRequires = [
-        'chkconfig:runtime',
         'conary:python',
         'conary-repository:python',
-        'desktop-file-utils:runtime',
         'info-rmake-chroot:user',
         'info-rmake:user',
-        'libcap:devel',
-        'm2crypto:python',
-        'pygtk:python',
-        'python:devel',
-    ]
+        ]
+
+    if plat == 'rpath':
+        buildRequires.extend([
+            'chkconfig:runtime',
+            'libcap:devel',
+            'm2crypto:python',
+            'python:devel',
+            ])
+    elif plat == 'centos':
+        buildRequires.extend([
+            'libcap-devel:rpm',
+            'm2crypto:rpm',
+            'python-devel:rpm',
+            'tag-initscript:tagdescription',
+            ])
 
     def setup(r):
-        r.addMercurialSnapshot()
+        r.addGitSnapshot()
 
-        r.addSource('server.conf', dest='%(sysconfdir)s/rmake/serverrc',
-                    macros=True)
-        r.addSource('client.conf', dest='%(sysconfdir)s/rmake/rmakerc',
-                    macros=True)
-
-
-        r.InitialContents('%(sysconfdir)s/rmake/(serverrc|rmakerc)')
-
-        r.Make('libdir=%(libdir)s')
-        r.MakeInstall('libdir=%(libdir)s')
+        makeArgs = (
+            'libdir=%(libdir)s '
+            'initdir=%(initdir)s '
+            )
+        r.Make(makeArgs)
+        r.MakeInstall(makeArgs)
 
         r.MakeDirs('%(localstatedir)s/{lib,log,run}/rmake')
         r.MakeDirs('%(localstatedir)s/rmake', mode=0700)
@@ -60,15 +68,10 @@ class RmakeRecipe(CPackageRecipe):
                     '%(localstatedir)s/(lib|log|run)/rmake',
                     '%(servicedir)s/rmake',
                     '%(libexecdir)s/rmake')
-        r.ExcludeDirectories(exceptions='%(localstatedir)s/(lib|log|run)/rmake')
-        r.ExcludeDirectories(exceptions='%(localstatedir)s/rmake')
-        r.ExcludeDirectories(exceptions='%(localstatedir)s/rmake/chroots')
-        r.ExcludeDirectories(exceptions='%(localstatedir)s/rmake/archive')
-        r.ExcludeDirectories(exceptions='%(localstatedir)s/rmake/chrootcache')
-        r.ExcludeDirectories(exceptions='%(servicedir)s/rmake')
-        r.ExcludeDirectories(exceptions='%(sysconfdir)s/rmake')
-        r.ExcludeDirectories(exceptions='%(sysconfdir)s/rmake/client.d')
-        r.ExcludeDirectories(exceptions='%(sysconfdir)s/rmake/server.d')
+        r.InitialContents('%(sysconfdir)s/rmake/(serverrc|rmakerc|noderc)')
+        r.Create('%(sysconfdir)s/rmake/client.d/.keep')
+        r.Create('%(sysconfdir)s/rmake/node.d/.keep')
+        r.Create('%(sysconfdir)s/rmake/server.d/.keep')
 
         r.ComponentSpec('libexec', 'chroothelper',
                                    '%(localstatedir)s/rmake',
@@ -76,15 +79,12 @@ class RmakeRecipe(CPackageRecipe):
                                    '%(localstatedir)s/run/rmake')
         r.SetModes('%(libexecdir)s/rmake/chroothelper', 04755)
         r.Requires('rmake:libexec', 'rootfactory.py')
-        r.Requires('iproute:runtime', '.*/site-packages/rmake/lib/procutil.*')
         r.Requires(exceptDeps='python: (epdb|rmake.cmdline.password)')
-        r.ComponentSpec('gtk', 'password.py(|c|o)')
-        # make gtk require rmake:runtime
-        r.ComponentRequires({'runtime' : ['gtk']})
         r.ComponentProvides('%(version)s')
         r.UtilizeUser('rmake-chroot', '%(libexecdir)s/rmake/chroothelper')
         r.UtilizeGroup('rmake-chroot', '%(libexecdir)s/rmake/chroothelper')
         r.Doc('extra/plugins/*.py')
+        r.AutoDoc(exceptions='NEWS.src.*')
 
         ## package rmake-proxy
         r.macros.proxydir = '%(servicedir)s/rmake-proxy'
@@ -127,9 +127,13 @@ class RmakeRecipe(CPackageRecipe):
         # This package has files required on individual build nodes
         # controlled by a head node
         r.PackageSpec('rmake-node',
+                      '%(sysconfdir)s/rmake/node(rc|.d|.d/.keep)',
                       '%(initdir)s/rmake-node',
                       '%(sbindir)s/rmake-node',
-                      '%(mandir)s/.*rmake-node.*')
+                      '%(mandir)s/.*rmake-node.*',
+                      '%(libexecdir)s/rmake/chroothelper',
+                      '%(localstatedir)s/rmake.*',
+                      )
         r.Requires('rmake:python(%(version)s)', '%(sbindir)s/rmake-node')
 
 
@@ -139,8 +143,15 @@ class RmakeRecipe(CPackageRecipe):
         r.Create('%(sysconfdir)s/rmake/client.d/00_rmake_multinode',
                  contents='rmakeUrl https://localhost')
         r.PackageSpec('rmake-multinode-server',
-                      '.*/rmake/plugins/multinode/.*',
-                      '%(sysconfdir)s/rmake/client.d/00_rmake_multinode')
-        r.Requires('rmake:python(%(version)s)', 'rmake_node/__init__.py')
+                      '%(sysconfdir)s/rmake/server(rc|.d|.d/.keep).*',
+                      '%(sysconfdir)s/rmake/client.d/00_rmake_multinode',
+                      '%(initdir)s/rmake',
+                      '%(sbindir)s/rmake-messagebus',
+                      '%(sbindir)s/rmake-server',
+                      '%(mandir)s/.*rmake-server.*',
+                      '%(mandir)s/.*rmake-multinode.*',
+                      '%(servicedir)s/rmake',
+                      )
+        r.Requires('rmake:python(%(version)s)', '%(sbindir)s/rmake-server')
         # Avoid rpl-2-py26 <-> fl:2 compatibility issues
-        r.Requires(exceptDeps='file: /etc/init.d/functions')
+        r.NormalizeInitscriptContents(exceptions='%(initdir)s/.*')
