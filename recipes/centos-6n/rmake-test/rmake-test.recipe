@@ -32,10 +32,9 @@ class RMakeTest(CPackageRecipe, TestPackageRecipe):
         'perl:rpm',
         'procps:rpm',
         'python-devel:rpm',
-        'rmake-multinode-server:config',
-        'rmake-multinode-server:data',
-        'rmake:python',
-        'rmake:runtime',
+        'rmake',
+        'rmake-multinode-server',
+        'rmake-node',
         'testutils:runtime',
       ]
 
