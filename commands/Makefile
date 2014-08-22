@@ -51,6 +51,11 @@ config.h:
 	else \
 		: > $@ ; \
 	fi
+	if grep -q CLONE_NEWPID /usr/include/linux/sched.h ; then \
+		echo '#define USE_NAMESPACES 1' >> $@ ; \
+	else \
+		echo '#define USE_NAMESPACES 0' >> $@; \
+	fi
 
 chroothelper.h: chroothelper.h.in ../Make.defs
 	$(SED) -e s,@version@,$(VERSION),g \

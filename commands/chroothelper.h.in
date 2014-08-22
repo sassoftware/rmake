@@ -26,10 +26,8 @@
 #define BTRFS "/sbin/btrfs"
 
 #ifdef __linux__
-#define USE_NAMESPACES 1
 #define USE_BTRFS 1
 #else
-#define USE_NAMESPACES 0
 #define USE_BTRFS 0
 #endif
 

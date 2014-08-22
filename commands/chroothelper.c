@@ -81,7 +81,6 @@
 
 #include "chroothelper.h"
 #include "config.h"
-#include "compat.h"
 
 /* global option for verbose execution */
 static int opt_verbose = 0;
