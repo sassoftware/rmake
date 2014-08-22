@@ -32,6 +32,10 @@ install-mkdirs:
 	mkdir -p $(DESTDIR)$(initdir)
 
 install: install-mkdirs rmake.init
+	mkdir -p $(DESTDIR)/etc/rmake
+	echo "includeConfigFile client.d/*" >$(DESTDIR)/etc/rmake/rmakerc
+	echo "includeConfigFile server.d/*" >$(DESTDIR)/etc/rmake/serverrc
+	echo "includeConfigFile node.d/*" >$(DESTDIR)/etc/rmake/noderc
 	$(INSTALL) -m755 rmake.init $(DESTDIR)/$(initdir)/rmake
 	$(INSTALL) -m755 rmake-node.init $(DESTDIR)/$(initdir)/rmake-node
 	$(INSTALL) -m755 btrfs-tmpwatch $(DESTDIR)$(rmakelibexecdir)/btrfs-tmpwatch
