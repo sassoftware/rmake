@@ -26,6 +26,8 @@ import SocketServer
 import SimpleXMLRPCServer
 import urllib
 import sys
+from rmake.lib import xmlrpc_null
+
 
 BUFSIZE = 1024 * 2
 

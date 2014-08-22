@@ -32,7 +32,7 @@ from rmake.lib import flavorutil
 from rmake.lib import logger
 from rmake.lib import server
 from rmake.lib.apiutils import api, api_parameters, api_return
-from rmake.messagebus import busclient
+from rmake.messagebus.rpclib import SessionProxy
 from rmake.multinode import messages
 from rmake.multinode import nodeclient
 from rmake.multinode import nodetypes
@@ -310,8 +310,7 @@ class DispatcherNodeClient(nodeclient.NodeClient):
 
 class DispatcherRPCClient(object):
     def __init__(self, client, sessionId):
-        self.proxy = busclient.SessionProxy(DispatcherNodeClient, client,
-                                            sessionId)
+        self.proxy = SessionProxy(DispatcherNodeClient, client, sessionId)
 
     def listNodes(self):
         return self.proxy.listNodes()

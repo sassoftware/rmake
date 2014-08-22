@@ -32,6 +32,7 @@ from rmake.lib import logger
 from rmake.lib import procutil
 from rmake.lib import server
 from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw
+from rmake.messagebus.rpclib import SessionProxy
 from rmake.server import client
 from rmake.worker import worker
 
@@ -375,7 +376,7 @@ class WorkerNodeRPCClient(object):
         sessionId: sessionId of rMake node to communicate with.
     """
     def __init__(self, client, sessionId):
-        self.proxy = busclient.SessionProxy(WorkerNodeClient, client, sessionId)
+        self.proxy = SessionProxy(WorkerNodeClient, client, sessionId)
 
     def listCommands(self):
         return self.proxy.listCommands()

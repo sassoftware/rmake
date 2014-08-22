@@ -174,7 +174,7 @@ class ConaryVersion(object):
                 if not self.conaryVersion <= maxVer:
                     return False
             else:
-                highVer = mimumSupportedConaryVersion
+                highVer = minimumSupportedConaryVersion
                 for v in maxVer:
                     v = [int(x) for x in v.split(".")]
                     if self.conaryVersion[:2] == v[:2] and \

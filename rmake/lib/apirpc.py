@@ -195,8 +195,8 @@ class ApiServer(server.Server):
                     (constants.version, self._apiMajorVersion, apiMajorVersion))
 
         if methodVersion not in method.allowed_versions:
-            raise RuntimeError(
-                    '%s: unsupported method version %s' % (methodName, version))
+            raise RuntimeError('%s: unsupported method version %s' %
+                    (methodName, methodVersion))
 
         args = list(_thawParams(method, args, methodVersion))
 
@@ -242,7 +242,7 @@ class XMLApiServer(ApiServer):
                 import urllib
                 type, url = urllib.splittype(uri)
                 if type == 'unix':
-                    serverObj = rpclib.UnixDomainDelayableXMLRPCServer(url,
+                    serverObj = rpclib.UnixDomainAuthenticatedXMLRPCServer(url,
                                                             logRequests=False)
                 elif type in ('http', 'https'):
                     # path is ignored with simple server.
@@ -258,7 +258,7 @@ class XMLApiServer(ApiServer):
                         host = ''
 
                     useSSL = type == 'https'
-                    serverObj = rpclib.DelayableXMLRPCServer((host, port),
+                    serverObj = rpclib.AuthenticatedXMLRPCServer((host, port),
                         logRequests=False, ssl=useSSL, sslCert=sslCertificate,
                         caCert=caCertificate)
                     if useSSL:
@@ -309,8 +309,6 @@ def _freezeParams(api, paramList, version):
             yield paramType.__freeze__(param)
 
 def _freezeReturn(api, val, version):
-    if isinstance(val, rpclib.ResponseModifier):
-        return val
     returnType = api.returnType[version]
     if returnType is None:
         return val
@@ -385,8 +383,6 @@ class CallData(object):
             if self.authMethod:
                 self.authMethod(self, fn, *args, **kw)
             rv =  fn(*args, **kw)
-            if isinstance(rv, rpclib.ResponseModifier):
-                return rv
             if rv != None:
                 rv =  _freezeReturn(self.method, rv, self.methodVersion)
             else:
@@ -398,18 +394,6 @@ class CallData(object):
                 from conary.lib import debugger
                 debugger.post_mortem(sys.exc_info()[2])
         return response
-
-    def respondWithFunction(self, fn, *args, **kw):
-        self.responseHandler.callResponseFn(self.callFunction, fn, *args, **kw)
-
-    def respond(self, response):
-        self.responseHandler.sendResponse((True, response))
-
-    def respondWithException(self, exception):
-        self.responseHandler.sendResponse((False, _freezeException(exception)))
-
-    def delay(self):
-        return rpclib.DelayedResponse()
 
     def getApiMajorVersion(self):
         return self.apiMajorVersion

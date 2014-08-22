@@ -19,6 +19,7 @@
 The worker is in charge of taking build requests and monitoring them
 until they complete.
 """
+import os
 import select
 import traceback
 

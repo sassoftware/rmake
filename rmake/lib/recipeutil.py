@@ -593,7 +593,7 @@ else:
                                                   "contain %s" %
                           (sourceTrove.getName(),
                            sourceTrove.getVersion().asString(),
-                           filename))
+                           recipePath))
 
             (fd, recipeFile) = tempfile.mkstemp(".recipe", 'temp-%s-' %name, 
                                                 dir=cfg.tmpDir)

@@ -113,6 +113,7 @@ class HttpAuth(AuthObject):
         else:
             return 'HttpAuth()'
 
+
 class SocketAuth(HttpAuth):
     __slots__ = ['pid', 'uid', 'gid', 'socketUser']
 
@@ -185,7 +186,7 @@ class QuietXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
             SimpleXMLRPCServer.log_message(self, format, *args)
 
 
-class DelayableXMLRPCRequestHandler(QuietXMLRPCRequestHandler):
+class AuthenticatedXMLRPCRequestHandler(QuietXMLRPCRequestHandler):
     def setup(self):
         QuietXMLRPCRequestHandler.setup(self)
 
@@ -220,11 +221,6 @@ class DelayableXMLRPCRequestHandler(QuietXMLRPCRequestHandler):
             self.send_response(500)
             self.end_headers()
 
-    def finish(self):
-        pass
-
-    def _finish(self):
-        SimpleXMLRPCRequestHandler.finish(self)
 
 class XMLRPCResponseHandler(object):
     def __init__(self, request, debug=True):
@@ -282,14 +278,6 @@ class XMLRPCResponseHandler(object):
 
     def sendResponse(self, response):
         try:
-            if isinstance(response, NoResponse):
-                # do nothing, response will be handled by a forked process
-                return
-            elif isinstance(response, DelayedResponse):
-                # do nothing, response has been delayed,
-                # to be handled by another call to this method.
-                self._delayed = True
-                return
             response = self.serializeResponse(response)
             self.transferResponse(response)
             self.close()
@@ -323,16 +311,8 @@ class StreamXMLRPCResponseHandler(XMLRPCResponseHandler):
         self.request.end_headers()
         self.request.wfile.write(responseString)
 
-class ResponseModifier(object):
-    pass
 
-class NoResponse(ResponseModifier):
-    pass
-
-class DelayedResponse(ResponseModifier):
-    pass
-
-class DelayableXMLRPCDispatcher(SimpleXMLRPCDispatcher):
+class AuthenticatedXMLRPCDispatcher(SimpleXMLRPCDispatcher):
     def __init__(self):
         if sys.version[0:3] == '2.4':
             SimpleXMLRPCDispatcher.__init__(self)
@@ -370,15 +350,16 @@ class DelayableXMLRPCDispatcher(SimpleXMLRPCDispatcher):
         params = (self.auth, response_method, params)
         SimpleXMLRPCDispatcher._dispatch(self, method, params)
 
-class DelayableXMLRPCServer(DelayableXMLRPCDispatcher, SimpleXMLRPCServer):
-    def __init__(self, path, requestHandler=DelayableXMLRPCRequestHandler,
+
+class AuthenticatedXMLRPCServer(AuthenticatedXMLRPCDispatcher, SimpleXMLRPCServer):
+    def __init__(self, path, requestHandler=AuthenticatedXMLRPCRequestHandler,
                  logRequests=1, ssl=False, sslCert=None, caCert=None):
         self.sslCert = sslCert
         self.caCert = caCert
         self.ssl = ssl
 
         SimpleXMLRPCServer.__init__(self, path, requestHandler, logRequests)
-        DelayableXMLRPCDispatcher.__init__(self)
+        AuthenticatedXMLRPCDispatcher.__init__(self)
 
     def server_bind(self):
         self.allow_reuse_address = True
@@ -417,18 +398,20 @@ class DelayableXMLRPCServer(DelayableXMLRPCDispatcher, SimpleXMLRPCServer):
         except SSLError, e:
             return
 
-class UnixDomainDelayableXMLRPCRequestHandler(
+
+class UnixDomainAuthenticatedXMLRPCRequestHandler(
                                      localrpc.UnixDomainHTTPRequestHandler,
-                                     DelayableXMLRPCRequestHandler):
+                                     AuthenticatedXMLRPCRequestHandler):
     pass
 
-class UnixDomainDelayableXMLRPCServer(DelayableXMLRPCDispatcher,
+
+class UnixDomainAuthenticatedXMLRPCServer(AuthenticatedXMLRPCDispatcher,
                                       SocketServer.UnixStreamServer):
-        def __init__(self, path,
-                     requestHandler=UnixDomainDelayableXMLRPCRequestHandler,
-                     logRequests=1):
-            self.logRequests = logRequests
-            DelayableXMLRPCDispatcher.__init__(self)
-            umask = os.umask(0)
-            SocketServer.UnixStreamServer.__init__(self, path, requestHandler)
-            os.umask(umask)
+    def __init__(self, path,
+            requestHandler=UnixDomainAuthenticatedXMLRPCRequestHandler,
+            logRequests=1):
+        self.logRequests = logRequests
+        AuthenticatedXMLRPCDispatcher.__init__(self)
+        umask = os.umask(0)
+        SocketServer.UnixStreamServer.__init__(self, path, requestHandler)
+        os.umask(umask)
