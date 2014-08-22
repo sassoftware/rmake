@@ -19,15 +19,13 @@
 Tests dispatcher
 """
 
-import asyncore
 import os
 import socket
-import sys
 import time
 
+from testrunner import testhelp
 from testutils import mock
 from rmake_test import rmakehelp
-from conary_test import recipes
 
 from conary.deps import deps
 from conary.deps.deps import parseFlavor
@@ -232,7 +230,7 @@ class DispatcherTest(rmakehelp.RmakeHelper):
             port = buildLog.getPort()
             logPath = buildLog.logPath
             buildLog.close()
-            del buildLog
+            buildLog = None
             s = socket.socket()
             s.connect(('localhost', port))
             s.send('blah blah blah\n')
@@ -272,7 +270,7 @@ class DispatcherTest(rmakehelp.RmakeHelper):
         # and the contents of the log.
         # Is it okay still to have a fake Node that performs the build and
         # writes to the port?
-        raise testsuite.SkipTestException
+        raise testhelp.SkipTestException
 
     def testDispatcherServerStopFull(self):
         self.startRmakeServer(multinode=True)
@@ -314,7 +312,7 @@ class DispatcherTest(rmakehelp.RmakeHelper):
         # this should be a test where the trove fails - not as full
         # as the build one but should make sure all build messages
         # arrive.
-        raise testsuite.SkipTestException
+        raise testhelp.SkipTestException
 
     def testNodeMessagesOutOfSync(self):
         db = mock.MockObject()

@@ -24,7 +24,10 @@ from conary.deps import deps
 from rmake import errors
 
 from rmake.lib import apirpc
-from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw
+from rmake.lib.apiutils import api, api_parameters, api_return
+from rmake.messagebus import busclient
+from rmake.messagebus import rpclib
+from rmake.multinode.server import messagebus
 
 class Node(apirpc.ApiServer):
     _CLASS_API_VERSION = 1
@@ -58,7 +61,7 @@ class Node(apirpc.ApiServer):
 
 class NodeClient(object):
     def __init__(self, client, sessionId):
-        self.proxy = busclient.SessionProxy(Node, client, sessionId)
+        self.proxy = rpclib.SessionProxy(Node, client, sessionId)
 
     def getResults(self, flavor):
         return self.proxy.getResults(flavor)
@@ -67,11 +70,6 @@ class NodeClient(object):
         return self.proxy.raiseError(str)
 
 class MethodTest(rmakehelp.RmakeHelper):
-
-    def importPlugins(self):
-        global busclient, messagebus
-        from rmake.messagebus import busclient
-        from rmake.multinode.server import messagebus
 
     def testMethods(self):
         messageBusPort = self.startMessageBus()

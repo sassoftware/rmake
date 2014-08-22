@@ -244,6 +244,7 @@ class XMLApiServer(ApiServer):
                 if type == 'unix':
                     serverObj = rpclib.UnixDomainAuthenticatedXMLRPCServer(url,
                                                             logRequests=False)
+                    serverObj.setAuthMethod(rpclib.SocketAuth)
                 elif type in ('http', 'https'):
                     # path is ignored with simple server.
                     host, path = urllib.splithost(url)

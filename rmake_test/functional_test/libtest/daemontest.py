@@ -17,9 +17,8 @@
 
 import os
 import re
-import sys
 import time
-
+from testrunner import testhelp
 from conary_test import rephelp
 
 # conary
@@ -55,7 +54,7 @@ class DaemonTest(rephelp.RepositoryHelper):
         return MyTestDaemon
 
     def testGetDaemon(self):
-        raise testsuite.SkipTestException('Fails in bamboo')
+        raise testhelp.SkipTestException('Fails in bamboo')
         daemonClass = self.generateDaemonClass()
         util.mkdirChain(self.workDir + '/var/log')
         util.mkdirChain(self.workDir + '/var/lock')
@@ -78,7 +77,7 @@ class DaemonTest(rephelp.RepositoryHelper):
         assert(err.code == 1)
 
     def testStopDaemon(self):
-        raise testsuite.SkipTestException('Fails in bamboo')
+        raise testhelp.SkipTestException('Fails in bamboo')
         daemonClass = self.generateDaemonClass()
         util.mkdirChain(self.workDir + '/var/log')
         util.mkdirChain(self.workDir + '/var/lock')
