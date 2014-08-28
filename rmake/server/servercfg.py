@@ -197,8 +197,7 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
     dbPath            = dbstore.CfgDriver
     reposUrl        = (CfgString, 'https://LOCAL:7777')
     rmakeUrl        = (CfgString, 'https://localhost:9999')
-    proxyUrl        = (CfgString, None)
-    rbuilderUrl     = (CfgString, 'https://localhost/')
+    rbuilderUrl     = (CfgString, None)
     # if None, start one locally
     # if "LOCAL", don't start one but still use localhost
     messageBusHost  = (CfgString, None)
@@ -234,7 +233,10 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
             self.read(path, False)
 
     def getAuthUrl(self):
-        return self.translateUrl(self.rbuilderUrl)
+        if self.rbuilderUrl:
+            return self.translateUrl(self.rbuilderUrl)
+        else:
+            return None
 
     def getServerUri(self):
         rmakeUrl = self.rmakeUrl
@@ -376,7 +378,7 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
         return True
 
     def sanityCheckForStart(self):
-        if self.proxyUrl is None:
+        if self.proxyUrl is None and self.rbuilderUrl:
             self.proxyUrl = self.rbuilderUrl
         if self.hostName == 'localhost':
             self.hostName = procutil.getNetName()
@@ -402,20 +404,21 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
                 sys.exit(1)
         if self.useResolverCache:
             util.mkdirChain(self.getResolverCachePath())
-        try:
+        if self.rbuilderUrl:
             try:
-                urllib2.urlopen(self.rbuilderUrl).read(1024)
-            except urllib2.HTTPError, err:
-                if 200 <= err.code < 400:
-                    # Something benign like a redirect
-                    pass
-                else:
-                    raise
-        except Exception, err:
-            raise errors.RmakeError('Could not access rbuilder at %s.  '
-                    'Please ensure you have a line "rbuilderUrl '
-                    'https://<yourRbuilder>" set correctly in your serverrc '
-                    'file.  Error: %s' % (self.rbuilderUrl, err))
+                try:
+                    urllib2.urlopen(self.rbuilderUrl).read(1024)
+                except urllib2.HTTPError, err:
+                    if 200 <= err.code < 400:
+                        # Something benign like a redirect
+                        pass
+                    else:
+                        raise
+            except Exception, err:
+                raise errors.RmakeError('Could not access rbuilder at %s.  '
+                        'Please ensure you have a line "rbuilderUrl '
+                        'https://<yourRbuilder>" set correctly in your serverrc '
+                        'file.  Error: %s' % (self.rbuilderUrl, err))
 
     def reposRequiresSsl(self):
         return urllib.splittype(self.reposUrl)[0] == 'https'

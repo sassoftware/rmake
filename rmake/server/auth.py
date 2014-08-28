@@ -29,33 +29,34 @@ class AuthenticationManager(object):
         self.db = db
 
     def authCheck(self, user, challenge, ip='127.0.0.1'):
+        if not self.pwCheckUrl:
+            return True
         if self.db.auth.checkCache((user, challenge, ip)):
             return True
         isValid = False
-        if self.pwCheckUrl:
-            if not user or not challenge:
-                raise errors.InsufficientPermission("""\
+        if not user or not challenge:
+            raise errors.InsufficientPermission("""\
 No user given - check to make sure you've set rmakeUser config variable to match a user and password accepted by the rBuilder instance at %s""" % self.pwCheckUrl)
 
-            try:
-                #url = "%s/pwCheck?user=%s;password=%s;remote_ip=%s" \
-                #        % (self.pwCheckUrl, urllib.quote(user),
-                #           urllib.quote(challenge), urllib.quote(ip))
-                # at some point we should start sending remote_ip
-                if self.pwCheckUrl.endswith('/'):
-                    url = self.pwCheckUrl + "pwCheck"
-                else:
-                    url = self.pwCheckUrl + "/pwCheck"
-                query = '%s?user=%s;password=%s' \
-                          % (url, urllib.quote(user), urllib.quote(challenge))
-                f = urllib2.urlopen(query)
-                xmlResponse = f.read()
-                p = netauth.PasswordCheckParser()
-                p.parse(xmlResponse)
-                isValid = p.validPassword()
-            except Exception, e:
-                # FIXME: this is a very broad exception handler
-                isValid = False
+        try:
+            #url = "%s/pwCheck?user=%s;password=%s;remote_ip=%s" \
+            #        % (self.pwCheckUrl, urllib.quote(user),
+            #           urllib.quote(challenge), urllib.quote(ip))
+            # at some point we should start sending remote_ip
+            if self.pwCheckUrl.endswith('/'):
+                url = self.pwCheckUrl + "pwCheck"
+            else:
+                url = self.pwCheckUrl + "/pwCheck"
+            query = '%s?user=%s;password=%s' \
+                      % (url, urllib.quote(user), urllib.quote(challenge))
+            f = urllib2.urlopen(query)
+            xmlResponse = f.read()
+            p = netauth.PasswordCheckParser()
+            p.parse(xmlResponse)
+            isValid = p.validPassword()
+        except Exception, e:
+            # FIXME: this is a very broad exception handler
+            isValid = False
 
         if not isValid:
             raise errors.InsufficientPermission("""\
