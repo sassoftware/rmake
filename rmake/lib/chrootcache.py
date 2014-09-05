@@ -109,12 +109,22 @@ class ChrootCacheInterface(object):
         """
         return None
 
+    def findOld(self, hours):
+        """
+        List all chroots that haven't been used in more than the specified
+        interval.
+        """
+        raise NotImplementedError
+
 
 class LocalChrootCache(ChrootCacheInterface):
     """
     The LocalChrootCache class implements a chroot cache that uses the
     local file system to store tar archive of chroots.
     """
+    suffix = '.tar.gz'
+
+
     def __init__(self, cacheDir):
         """
         Instanciate a LocalChrootCache object
@@ -127,7 +137,7 @@ class LocalChrootCache(ChrootCacheInterface):
         path = self._fingerPrintToPath(chrootFingerprint)
         prefix = sha1ToString(chrootFingerprint) + '.'
         util.mkdirChain(self.cacheDir)
-        fd, fn = tempfile.mkstemp('.tar.gz', prefix, self.cacheDir)
+        fd, fn = tempfile.mkstemp(self.suffix, prefix, self.cacheDir)
         os.close(fd)
         try:
             subprocess.call('tar cSpf - -C %s . | gzip -1 - > %s' %(root, fn),
@@ -143,19 +153,29 @@ class LocalChrootCache(ChrootCacheInterface):
 
     def remove(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
-        try:
-            os.unlink(path)
-        except OSError, err:
-            if err.errno != errno.ENOENT:
-                raise
+        util.removeIfExists(path)
 
     def hasChroot(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
         return os.path.isfile(path)
 
     def _fingerPrintToPath(self, chrootFingerprint):
-        tar = sha1ToString(chrootFingerprint) + '.tar.gz'
+        tar = sha1ToString(chrootFingerprint) + self.suffix
         return os.path.join(self.cacheDir, tar)
+
+    def findOld(self, hours):
+        thresh = time.time() - 3600 * hours
+        old = []
+        for name in os.listdir(self.cacheDir):
+            if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
+                continue
+            fingerprint = sha1FromString(name[:40])
+            st = util.lstat(os.path.join(self.cacheDir, name))
+            if st:
+                atime = st.st_mtime
+                if atime < thresh:
+                    old.append(fingerprint)
+        return old
 
 
 class DirBasedChrootCacheInterface(ChrootCacheInterface):
@@ -172,10 +192,6 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
         return os.path.join(self.cacheDir, basename)
 
     def findPartialMatch(self, manifest):
-        """
-        Scan existing cached chroots for one that contains a subset of the
-        specified manifest
-        """
         bestScore = -1
         bestFingerprint = None
         for name in os.listdir(self.cacheDir):
@@ -191,10 +207,6 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
         return bestFingerprint
 
     def findOld(self, hours):
-        """
-        List all chroots that haven't been used in more than the specified
-        interval.
-        """
         thresh = time.time() - 3600 * hours
         old = []
         for name in os.listdir(self.cacheDir):
@@ -307,4 +319,5 @@ class HardlinkChrootCache(DirBasedChrootCacheInterface):
         self._call(['/bin/cp', '-Tal', source, dest])
 
     def _remove(self, path):
-        self._call(['/bin/rm', '-rf', path])
+        os.rename(path, path + '.dead')
+        self._call(['/bin/rm', '-rf', path + '.dead'])

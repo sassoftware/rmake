@@ -56,13 +56,39 @@ class ResetCommand(daemon.DaemonCommand):
         for chroot in chroots:
             rootManager.deleteChroot(chroot)
 
-class HelpCommand(command.HelpCommand):
+
+class CleanCacheCommand(daemon.DaemonCommand):
+    commands = ['clean-cache']
+    help = "Remove cached chroots older than <hours>"
+    paramHelp = '<hours>'
+    docs = {
+            'test': "Don't actually remove files",
+            'verbose': "Print which files were deleted",
+            }
+
     def addParameters(self, argDef):
-        argDef["config"] = options.MULT_PARAM
-        return command.HelpCommand.addParameters(self, argDef)
+        daemon.DaemonCommand.addParameters(self, argDef)
+        d = {}
+        d['test'] = '-t', options.NO_PARAM
+        argDef[self.defaultGroup].update(d)
 
     def runCommand(self, daemon, cfg, argSet, args):
-        return command.HelpCommand.runCommand(self, cfg, argSet, args)
+        args = args[2:]
+        if len(args) != 1:
+            return self.usage()
+        hours = int(args[0])
+        cache = cfg.getChrootCache()
+        if not cache:
+            print 'No chroot cache configured'
+            return 0
+        for fingerprint in cache.findOld(hours):
+            if argSet.get('test'):
+                print 'Would remove cached chroot:', fingerprint.encode('hex')
+                continue
+            elif cfg.verbose:
+                print 'Removing cached chroot:', fingerprint.encode('hex')
+            cache.remove(fingerprint)
+
 
 class HelpCommand(command.HelpCommand):
     def addParameters(self, argDef):
@@ -81,7 +107,7 @@ class rMakeNodeDaemon(daemon.Daemon):
     groups = [constants.chrootUser]
     capabilities = 'cap_sys_chroot+ep'
     commandList = list(daemon.Daemon.commandList) + \
-                  [ResetCommand, HelpCommand]
+                  [ResetCommand, CleanCacheCommand, HelpCommand]
 
     def getConfigFile(self, argv):
         self.plugins = plugins.getPluginManager(argv, nodecfg.NodeConfiguration)
