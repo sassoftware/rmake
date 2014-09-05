@@ -15,7 +15,6 @@
 #
 
 
-from rmake.build.subscriber import *
 from rmake.build.subscriber import _RmakePublisherProxy
 
 
@@ -23,19 +22,48 @@ from rmake.multinode import messages
 from rmake.multinode import nodetypes
 from rmake.multinode import nodeclient
 
-class rMakeServerNodeClient(nodeclient.NodeClient):
-    sessionClass = 'SRV'
+
+class _ServerNodeClient(nodeclient.NodeClient):
     name = 'rmake-server'
 
     def __init__(self, cfg, server):
         node = nodetypes.Server()
         nodeclient.NodeClient.__init__(self, cfg.getMessageBusHost(),
                 cfg.messageBusPort, cfg, server, node)
-        self.connect()
 
     def emitEvents(self, jobId, eventList):
         self.bus.sendSynchronousMessage('/event',
-                                         messages.EventList(jobId, eventList))
+                messages.EventList(jobId, eventList))
+
+
+class RPCNodeClient(_ServerNodeClient):
+    """Node client for RPC workers"""
+    sessionClass = 'RPC'
+
+    def stopJob(self, jobId):
+        self.bus.sendSynchronousMessage('/stopJob',
+                messages.StopJobRequest(jobId))
+
+    def disconnect(self):
+        if self.bus.isConnected():
+            self.bus.disconnect()
+
+
+class rMakeServerNodeClient(_ServerNodeClient):
+    """Node client for main server process"""
+    sessionClass = 'SRV'
+    subscriptions = [
+            '/event',
+            '/stopJob',
+            ]
+
+    def messageReceived(self, m):
+        _ServerNodeClient.messageReceived(self, m)
+        if isinstance(m, messages.EventList):
+            self.server.eventsReceived(*m.getEventList())
+        if isinstance(m, messages.StopJobRequest):
+            self.server.stopJob(m.getJobId())
+
 
 class _RmakeBusPublisher(_RmakePublisherProxy):
     """

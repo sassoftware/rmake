@@ -369,7 +369,7 @@ class JobStore(object):
         cu.execute("INSERT INTO Jobs (uuid, state, owner) "
                    "VALUES ( ?, ?, ? )",
                    job.uuid, job.state, job.owner)
-        jobId = cu.lastrowid
+        jobId = int(cu.lastrowid)
         for trove in job.iterTroves():
             trove.jobId = jobId
             (troveName, version,

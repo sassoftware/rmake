@@ -64,7 +64,7 @@ class Server(object):
                     startedShutdown = True
                     self._shutDownAndExit()
                 self._try('loop hook', self._serveLoopHook)
-                self._try('request handling', self.handleRequestIfReady, .1)
+                self._try('request handling', self.handleRequestIfReady)
         except SystemExit, err:
             try:
                 coveragehook.save()
@@ -85,7 +85,7 @@ class Server(object):
         startedShutdown = False
         self._try('loop hook', self._serveLoopHook)
         try:
-            self._try('request handling', self.handleRequestIfReady, .1)
+            self._try('request handling', self.handleRequestIfReady)
             self._try('loop hook', self._serveLoopHook)
             if self._halt:
                 self.info('Shutting down server')
@@ -109,7 +109,7 @@ class Server(object):
                 self._shutDownAndExit()
             raise
 
-    def handleRequestIfReady(self, sleepTime=0.1):
+    def handleRequestIfReady(self, sleepTime=1.0):
         time.sleep(sleepTime)
 
     def _serveLoopHook(self):

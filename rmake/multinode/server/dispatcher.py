@@ -199,7 +199,7 @@ class DispatcherServer(server.Server):
     def serve(self):
         self.serve_forever()
 
-    def handleRequestIfReady(self, sleepTime=0.1):
+    def handleRequestIfReady(self, sleepTime=10):
         self.client.handleRequestIfReady(sleepTime)
         self._halt = self._halt or self.client._halt
 

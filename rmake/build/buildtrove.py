@@ -844,3 +844,76 @@ class LoadTroveResult(object):
             setattr(new, attr, thaw(cls.attrTypes[attr], value))
         return new
 apiutils.register(LoadTroveResult)
+
+
+class ResolveResult(object):
+    def __init__(self, inCycle=False):
+        self.success = False
+        self.buildReqs = []
+        self.crossReqs = []
+        self.bootstrapReqs = []
+        self.missingBuildReqs = []
+        self.missingDeps = []
+        self.inCycle = inCycle
+        self.jobHash = None
+
+    def getBuildReqs(self):
+        assert(self.success)
+        return self.buildReqs
+
+    def getCrossReqs(self):
+        assert(self.success)
+        return self.crossReqs
+
+    def getBootstrapReqs(self):
+        assert self.success
+        return self.bootstrapReqs
+
+    def getMissingBuildReqs(self):
+        return self.missingBuildReqs
+
+    def getMissingDeps(self):
+        return self.missingDeps
+
+    def hasMissingBuildReqs(self):
+        return bool(self.missingBuildReqs)
+
+    def hasMissingDeps(self):
+        return bool(self.missingDeps)
+
+    def troveResolved(self, buildReqs, crossReqs, bootstrapReqs):
+        self.success = True
+        self.buildReqs = buildReqs
+        self.crossReqs = crossReqs
+        self.bootstrapReqs = bootstrapReqs
+
+    def troveMissingBuildReqs(self, isCross, buildReqs):
+        self.success = False
+        self.missingBuildReqs = [ (isCross, x) for x in buildReqs ]
+
+    def troveMissingDependencies(self, isCross, missingDeps):
+        self.success = False
+        self.missingDeps = [ (isCross, x) for x in missingDeps ]
+
+    def __freeze__(self):
+        d = self.__dict__.copy()
+        d.update(missingBuildReqs=[(x[0], freeze('troveSpec', x[1])) for x in
+                                    self.missingBuildReqs])
+        d.update(buildReqs=freeze('installJobList', self.buildReqs))
+        d.update(crossReqs=freeze('installJobList', self.crossReqs))
+        d.update(bootstrapReqs=freeze('installJobList', self.bootstrapReqs))
+        d.update(missingDeps=freeze('dependencyMissingList', self.missingDeps))
+        return d
+
+    @classmethod
+    def __thaw__(class_, d):
+        self = class_()
+        self.__dict__.update(d)
+        self.buildReqs = thaw('installJobList', self.buildReqs)
+        self.crossReqs = thaw('installJobList', self.crossReqs)
+        self.bootstrapReqs = thaw('installJobList', self.bootstrapReqs)
+        self.missingDeps = thaw('dependencyMissingList', self.missingDeps)
+        self.missingBuildReqs = [(x[0], thaw('troveSpec', x[1]))
+                                 for x in self.missingBuildReqs]
+        return self
+apiutils.register(ResolveResult)

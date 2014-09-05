@@ -224,7 +224,7 @@ class BuildConfiguration(conarycfg.ConaryConfiguration, FreezableConfigMixin):
     jobContext           = CfgList(CfgInt)
     recursedGroupTroves  = CfgList(CfgTroveTuple)
     reposName            = (CfgString, None)
-    rmakeUrl            = (CfgString, 'https://localhost')
+    rmakeUrl            = (CfgString, 'unix:///var/lib/rmake/socket')
     rmakeUser           = (CfgUser, None)
     clientCert = (cfgtypes.CfgPath, None)
     prebuiltBinaries               = CfgList(CfgTroveTuple)
@@ -480,9 +480,8 @@ class SanitizedBuildConfiguration(object):
     @staticmethod
     def __freeze__(cfg):
         cfg = apiutils.freeze('BuildConfiguration', cfg)
-        cfg['user'] = []
-        cfg['entitlement'] = []
-        cfg['rmakeUser'] = None
+        for key in ('user', 'entitlement', 'rmakeUser'):
+            cfg.pop(key, None)
         return cfg
 
     @staticmethod

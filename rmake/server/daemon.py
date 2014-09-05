@@ -21,8 +21,8 @@ rMake server daemon
 """
 import os
 import shutil
-import signal
 import sys
+import traceback
 
 from conary.lib import options, util
 from conary import command
@@ -30,11 +30,21 @@ from conary import command
 from rmake import compat
 from rmake import constants
 from rmake import plugins
+from rmake.build import builder
+from rmake.build import buildjob
+from rmake.build import subscriber as build_subscriber
+from rmake.db import database
 from rmake.lib import daemon
+from rmake.lib import server as server_mod
+from rmake.lib import subscriber as subscriber_mod
 from rmake.multinode import admin
+from rmake.multinode.server import dispatcher
+from rmake.multinode.server import messagebus
+from rmake.multinode.server import subscriber as mn_subscriber
 from rmake.server import repos
 from rmake.server import servercfg
 from rmake.server import server
+from rmake.server import wsgi_gunicorn
 # needed for deleting chroots upon "reset"
 from rmake.worker.chroot import rootmanager
 
@@ -175,7 +185,7 @@ class rMakeDaemon(daemon.Daemon):
         p.callServerHook('server_preInit', self, argv)
         self.plugins = p
         cfg = daemon.Daemon.getConfigFile(self, argv)
-        cfg.sanityCheck() 
+        cfg.sanityCheck()
         return cfg
 
     def doWork(self):
@@ -185,49 +195,318 @@ class rMakeDaemon(daemon.Daemon):
         except Exception, e:
             self.logger.error(e)
             sys.exit(1)
-        reposPid = None
-        proxyPid = None
 
-        rMakeServer = None
-        try:
-            if not cfg.isExternalRepos():
-                reposPid = repos.startRepository(cfg, fork=True, 
-                                                 logger=self.logger)
-            if cfg.proxyUrl and not cfg.isExternalProxy():
-                proxyPid = repos.startProxy(cfg, fork=True,
-                                            logger=self.logger)
-            if cfg.getSocketPath():
-                util.removeIfExists(cfg.getSocketPath())
-            rMakeServer = server.rMakeServer(cfg.getServerUri(), cfg,
-                                             repositoryPid=reposPid,
-                                             proxyPid=proxyPid,
-                                             pluginMgr=self.plugins)
-            rMakeServer._installSignalHandlers()
-            rMakeServer.serve_forever()
-        finally:
-            if rMakeServer:
-                if rMakeServer.repositoryPid:
-                    self.killRepos(reposPid)
-                if rMakeServer.proxyPid:
-                    self.killRepos(proxyPid, 'proxy')
-            else:
-                # rmake server failed to start
-                if reposPid:
-                    self.killRepos(reposPid)
-                if proxyPid:
-                    self.killRepos(proxyPid, 'proxy')
-
-
-    def killRepos(self, pid, name='repository'):
-        self.logger.info('killing %s at %s' % (name, pid))
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except Exception, e:
-            self.logger.warning(
-            'Could not kill %s at pid %s: %s' % (name, pid, e))
+        proc = RmakeServerProc(cfg, self.plugins, logger=self.logger)
+        proc.serve_forever()
 
     def runCommand(self, *args, **kw):
         return daemon.Daemon.runCommand(self, *args, **kw)
+
+
+class RmakeServerProc(server_mod.Server):
+
+    def __init__(self, cfg, pluginMgr, logger):
+        self.cfg = cfg
+        self.buildPids = {}
+        self.criticalPids = {}
+        self.db = None
+        self.plugins = pluginMgr
+        self.nodeClient = None
+        self.eventHandler = EventHandler(self)
+        self._subscribers = []
+        self._jobsPending = False
+        server_mod.Server.__init__(self, logger=logger)
+
+    def serve_forever(self):
+        try:
+            self._installSignalHandlers()
+            self._startRepository()
+            self._startProxy()
+            self._startMessageBus()
+            self._connectDatabase()
+            self._connectBus()
+            self._postStartupTasks()
+            self._startRPC()
+            self._startDispatcher()
+            self.plugins.callServerHook('server_postInit', self)
+        except Exception:
+            self.exception("Fatal error during rMake startup:")
+            try:
+                self._killAllPids()
+            finally:
+                os._exit(70)
+        server_mod.Server.serve_forever(self)
+        self.plugins.callServerHook('server_shutDown', self)
+
+    # Server/PID management
+
+    def _close(self):
+        if self.db:
+            self.db.close()
+        if self.nodeClient:
+            self.nodeClient.postFork()
+            self.nodeClient = None
+        server_mod.Server._close(self)
+
+    def _fork(self, name, close=False, criticalLogPath=None):
+        pid = server_mod.Server._fork(self, name)
+        if pid:
+            if criticalLogPath:
+                self.criticalPids[pid] = criticalLogPath
+            return pid
+        self._close()
+        if self.db and not close:
+            self.db.reopen()
+        return pid
+
+    def _pidDied(self, pid, status, name=None):
+        name = self._getPidName(pid, name)
+        criticalLogPath = self.criticalPids.pop(pid, None)
+        if criticalLogPath and not self._halt:
+            self.error("""
+Internal %s died - shutting down rMake.
+The %s can die on startup due to an earlier unclean shutdown of
+rMake.  Check for orphaned processes running under the '%s' user,
+and check the log file at %s for detailed diagnostics.
+""" % (name, name, constants.rmakeUser, criticalLogPath))
+            self._halt = True
+        jobId = self.buildPids.pop(pid, None)
+        if jobId and not self._halt:
+            if status:
+                msg = self._getExitMessage(pid, status, name)
+                self.error("Builder for job %s died: %s", jobId, msg)
+                job = self.db.getJob(jobId)
+                if job.isBuilding():
+                    self.subscribeToJob(job)
+                    job.jobFailed(msg)
+            else:
+                # A job just finished so check if there is another in the queue
+                # waiting for free slots.
+                self.startJob()
+        self.plugins.callServerHook('server_pidDied', self, pid, status)
+        self._pids.pop(pid, None)
+
+    # Startup
+
+    def _startMessageBus(self):
+        if self.cfg.messageBusHost is not None:
+            return
+        logPath = self.cfg.getMessageBusLogPath()
+        messages = self.cfg.logDir + '/messages/messagebus.log'
+        util.mkdirChain(os.path.dirname(messages))
+        bus = messagebus.MessageBus('', self.cfg.messageBusPort, logPath,
+                messages)
+        pid = self._fork('messagebus', close=True, criticalLogPath=logPath)
+        if pid:
+            bus._close()
+            return
+        try:
+            bus._installSignalHandlers()
+            bus.serve_forever()
+            os._exit(0)
+        except SystemExit as err:
+            os._exit(err.args[0])
+        except Exception:
+            bus.exception("Failed to start messagebus:")
+        finally:
+            os._exit(70)
+
+    def _startRepository(self):
+        if self.cfg.isExternalRepos():
+            return
+        pid = self._fork('repository', close=True,
+                criticalLogPath=self.cfg.getReposLogPath())
+        if pid:
+            repos.pingServer(self.cfg)
+            return
+        try:
+            repos.startRepository(self.cfg, fork=False, logger=self._logger)
+            os._exit(0)
+        except SystemExit as err:
+            os._exit(err.args[0])
+        except Exception:
+            self.exception("Error starting repository:")
+        finally:
+            os._exit(70)
+
+    def _startProxy(self):
+        if self.cfg.isExternalProxy():
+            return
+        pid = self._fork('proxy', close=True,
+                criticalLogPath=self.cfg.getProxyLogPath())
+        if pid:
+            repos.pingServer(self.cfg, proxyUrl=self.cfg.getProxyUrl())
+            return
+        try:
+            repos.startProxy(self.cfg, fork=False, logger=self._logger)
+            os._exit(0)
+        except SystemExit as err:
+            os._exit(err.args[0])
+        except Exception:
+            self.exception("Error starting proxy:")
+        finally:
+            self._exit(70)
+
+    def _connectDatabase(self):
+        self.db = database.Database(self.cfg.getDbPath(),
+                self.cfg.getDbContentsPath())
+        self._subscribers.append(build_subscriber._JobDbLogger(self.db))
+
+    def _connectBus(self):
+        self.nodeClient = mn_subscriber.rMakeServerNodeClient(self.cfg, self)
+        self.nodeClient.connect()
+        self._subscribers.append(mn_subscriber._RmakeBusPublisher(self.nodeClient))
+
+    def _startDispatcher(self):
+        pid = self._fork('dispatcher',
+                criticalLogPath=self.cfg.getDispatcherLogPath())
+        if pid:
+            return
+        try:
+            disp = dispatcher.DispatcherServer(self.cfg, self.db)
+            disp._installSignalHandlers()
+            disp.serve_forever()
+            os._exit(0)
+        except SystemExit as err:
+            os._exit(err.args[0])
+        except Exception:
+            disp.exception("Failed to start dispatcher:")
+        finally:
+            os._exit(70)
+
+    def _startRPC(self):
+        pid = self._fork('rpc', criticalLogPath=self.cfg.getServerLogPath())
+        if pid:
+            return
+        try:
+            wsgi = wsgi_gunicorn.GunicornServer(self.cfg)
+            wsgi.run()
+        except SystemExit as err:
+            os._exit(err.args[0])
+        except Exception:
+            self.exception("Failed to start RPC server:")
+        finally:
+            os._exit(70)
+
+    def _postStartupTasks(self):
+        """Normalize the state of things on startup"""
+        self.db.auth.resetCache()
+        self.db.deactivateAllNodes()
+        while True:
+            job = self.db.popJobFromQueue()
+            if job is None:
+                break
+            if job.isFailed():
+                continue
+            self.subscribeToJob(job)
+            job.jobFailed('Server was stopped')
+        for state in buildjob.ACTIVE_STATES:
+            for job in self.db.getJobsByState(state):
+                self.subscribeToJob(job)
+                job.jobFailed('Server was stopped')
+
+    # Main loop
+
+    def _serveLoopHook(self):
+        self._collectChildren()
+        self.startJob()
+        self.plugins.callServerHook('server_loop', self)
+
+    def handleRequestIfReady(self, sleepTime=0.1):
+        if self._jobsPending:
+            # If there may be more jobs in the queue, sleep a short time.
+            timeout = 0.1
+        else:
+            # Otherwise when a new job is queued an event will arrive from the
+            # nodeclient, so sleeping longer is okay.
+            timeout = 10.0
+        self.nodeClient.poll(timeout=timeout, maxIterations=1)
+
+    # Job processing
+
+    def subscribeToJob(self, job):
+        """Take ownership of a job and forward changes to subscribers"""
+        for sub in self._subscribers:
+            sub.attach(job)
+        job.own()
+
+    def eventsReceived(self, jobId, eventList):
+        self.eventHandler._receiveEvents(self.eventHandler.apiVersion,
+                eventList)
+
+    def startJob(self):
+        """Pop one job from the queue and start it"""
+        if not self.db.getEmptySlots():
+            self._jobsPending = False
+            return
+        job = self.db.popJobFromQueue()
+        if job is None:
+            self._jobsPending = False
+            return
+        self._jobsPending = True
+        if job.isFailed():
+            return
+        try:
+            self._startBuild(job)
+        except Exception:
+            self.exception("Failed to start job %d:", job.jobId)
+            self.subscribeToJob(job)
+            job.exceptionOccurred('Failed while starting job',
+                    traceback.format_exc())
+
+    def getBuilder(self, job):
+        """Create a Builder instance to build the given job"""
+        return builder.Builder(self.cfg, job, db=self.db)
+
+    def _startBuild(self, job):
+        """Spawn a builder process to build the given job"""
+        pid = self._fork('Job %s' % job.jobId)
+        if pid:
+            self.buildPids[pid] = job.jobId
+            return
+        try:
+            buildMgr = self.getBuilder(job)
+            for sub in self._subscribers:
+                if hasattr(sub, 'attachToBuild'):
+                    # This replaces the now-closed server nodeclient with the
+                    # builder's nodeclient.
+                    sub.attachToBuild(buildMgr)
+                else:
+                    sub.attach(job)
+            job.own()
+            buildMgr._installSignalHandlers()
+            buildMgr.buildAndExit()
+        except Exception, err:
+            buildMgr.logger.exception("Build initialization failed:")
+            job.exceptionOccurred(err, traceback.format_exc())
+            os._exit(2)
+        finally:
+            os._exit(70)
+
+    def stopJob(self, jobId):
+        job = self.db.getJob(jobId)
+        for pid, jobId in self.buildPids.items():
+            if jobId == job.jobId:
+                del self.buildPids[pid]
+                self._killPid(pid, hook=self.handleRequestIfReady)
+        if not job.isFinished() and not job.isCommitting():
+            self.subscribeToJob(job)
+            job.jobStopped("User requested stop")
+
+
+class EventHandler(subscriber_mod.StatusSubscriber):
+    listeners = {
+            'JOB_STATE_UPDATED': 'jobStateUpdated',
+            }
+
+    def __init__(self, server):
+        self.server = server
+        subscriber_mod.StatusSubscriber.__init__(self, None, None)
+
+    def jobStateUpdated(self, jobId, state, status):
+        if state == buildjob.JOB_STATE_QUEUED:
+            self.server.startJob()
+
 
 def main(argv):
     d = rMakeDaemon()

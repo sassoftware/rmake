@@ -85,6 +85,8 @@ class Builder(object):
         self.dh = None
         self.worker = builderproxy.WorkerClient(serverCfg, job, db)
         self.eventHandler = self.worker.eventHandler
+        if jobContext is None:
+            jobContext = self.buildCfg.jobContext
         if jobContext:
             self.setJobContext(jobContext)
         else:

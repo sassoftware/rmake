@@ -60,7 +60,7 @@ class NodeClient(apirpc.ApiServer):
     def getBusClient(self):
         return self.bus
 
-    def handleRequestIfReady(self, sleepTime):
+    def handleRequestIfReady(self, sleepTime=1.0):
         self.poll(sleepTime, maxIterations=1)
 
     def isConnected(self):
@@ -78,3 +78,6 @@ class NodeClient(apirpc.ApiServer):
 
     def connect(self):
         self.bus.connect()
+
+    def postFork(self):
+        self.bus.postFork()

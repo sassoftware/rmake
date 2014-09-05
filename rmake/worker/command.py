@@ -277,7 +277,7 @@ class AttachedCommand(Command):
             self.writePipe.flush()
             self._shutDownAndExit()
 
-    def handleRequestIfReady(self, sleep):
+    def handleRequestIfReady(self, sleep=0.1):
         time.sleep(sleep)
 
     def _serveLoopHook(self):

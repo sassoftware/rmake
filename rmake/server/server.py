@@ -20,25 +20,10 @@
 rMake Backend server
 """
 import itertools
-import logging
-import os
-import random
-import socket
-import sys
-import traceback
-import urllib
 import xmlrpclib
 
-from conary.lib import util
-
-from rmake import constants
 from rmake import errors
-from rmake import plugins
-from rmake.build import builder
-from rmake.build import buildjob
 from rmake.build import subscriber
-from rmake.multinode.server import dispatcher
-from rmake.multinode.server import messagebus
 from rmake.multinode.server import subscriber as mn_subscriber
 from rmake.multinode.server import workerproxy
 from rmake.server import auth
@@ -72,18 +57,13 @@ class rMakeServer(apirpc.XMLApiServer):
         job.uuid = job.getMainConfig().uuid
         authData = callData.getAuth()
         if authData:
-            # should be true except for in testsuite
             job.owner = authData.getUser()
         self.db.addJob(job)
         self._subscribeToJob(job)
         self.db.queueJob(job)
         queuedIds = self.db.listJobIdsOnQueue()
-        if len(queuedIds) > 1:
-            message = 'Job Queued - Builds ahead of you: %d' % (
-                len(queuedIds) - 1)
-        else:
-            message = 'Job Queued - You are next in line for processing'
-        job.jobQueued(message)
+        job.jobQueued('Job Queued')
+        job.disown()
         return job.jobId
 
     @api(version=1)
@@ -92,10 +72,12 @@ class rMakeServer(apirpc.XMLApiServer):
         callData.logger.logRPCDetails('stopJob', jobId=jobId)
         jobId = self.db.convertToJobId(jobId)
         job = self.db.getJob(jobId, withTroves=True)
-        self._stopJob(job)
-        self._subscribeToJob(job)
-        job.own()
-        job.jobStopped('User requested stop')
+        if job.isCommitting():
+            return
+        elif not job.isQueued() and not job.isRunning():
+            raise errors.RmakeError('Cannot stop job %s - it is'
+                                    ' already stopped' % job.jobId)
+        self.nodeClient.stopJob(job.jobId)
 
     @api(version=1)
     @api_parameters(1, None, None)
@@ -254,7 +236,6 @@ class rMakeServer(apirpc.XMLApiServer):
         jobs = self.db.getJobs(jobIds)
         for job in jobs:
             self._subscribeToJob(job)
-            job.own()
             job.jobCommitting()
 
     @api(version=1)
@@ -264,7 +245,6 @@ class rMakeServer(apirpc.XMLApiServer):
         jobs = self.db.getJobs(jobIds)
         for job in jobs:
             self._subscribeToJob(job)
-            job.own()
             job.jobCommitFailed(message)
 
     @api(version=1)
@@ -280,7 +260,6 @@ class rMakeServer(apirpc.XMLApiServer):
         jobs = self.db.getJobs(jobIds, withTroves=True)
         for (jobId, troveMap), job in itertools.izip(finalMap, jobs):
             self._subscribeToJob(job)
-            job.own()
             job.jobCommitted(troveMap)
 
     @api(version=1)
@@ -311,10 +290,9 @@ class rMakeServer(apirpc.XMLApiServer):
 
     # --- internal functions
 
-    def getBuilder(self, job):
-        b = builder.Builder(self.cfg, job, db=self.db)
-        self.plugins.callServerHook('server_builderInit', self, b)
-        return b
+    #def getBuilder(self, job):
+    #    b = builder.Builder(self.cfg, job, db=self.db)
+    #    return b
 
     def updateBuildConfig(self, buildConfig):
         buildConfig.repositoryMap.update(self.cfg.getRepositoryMap())
@@ -330,63 +308,6 @@ class rMakeServer(apirpc.XMLApiServer):
                 buildConfig.conaryProxy['http'] = proxyUrl
                 buildConfig.conaryProxy['https'] = proxyUrl
 
-    def _serveLoopHook(self):
-        if not self._initialized and hasattr(self, 'worker'):
-            self.db.auth.resetCache()
-            jobsToFail = []
-            for state in buildjob.ACTIVE_STATES:
-                jobsToFail += self.db.getJobsByState(state)
-            self._failCurrentJobs(jobsToFail, 'Server was stopped')
-            self.db.deactivateAllNodes()
-            self._initialized = True
-
-        while not self._halt:
-            # start one job from the cue.  This loop should be
-            # exited after one successful start.
-            job = self._getNextJob()
-            if job is None:
-                break
-            # tell everyone else on the queue that they've been bumped up one
-            jobIds = self.db.listJobIdsOnQueue()
-            queuedJobs = self.db.getJobs(jobIds,
-                                         withTroves=False, withConfigs=False)
-            for idx, queuedJob in enumerate(queuedJobs):
-                self._subscribeToJob(queuedJob)
-                if not idx:
-                    queuedJob.jobQueued(
-                        'Job Queued - You are next in line for processing')
-                else:
-                    queuedJob.jobQueued(
-                        'Job Queued - Builds ahead of you: %d' % idx)
-
-            try:
-                self._startBuild(job)
-            except Exception, err:
-                self._subscribeToJob(job)
-                job.exceptionOccurred('Failed while initializing',
-                                      traceback.format_exc())
-            break
-        self._collectChildren()
-        if self._nodeClient:
-            self._nodeClient.poll()
-        self.plugins.callServerHook('server_loop', self)
-
-    def _getNextJob(self):
-        if not self._canBuild():
-            return
-        while True:
-            job = self.db.popJobFromQueue()
-            if job is None:
-                break
-            if job.isFailed():
-                continue
-            job.own()
-            return job
-
-    def _canBuild(self):
-        if self.db.getEmptySlots():
-            return True
-
     def _authCheck(self, callData, fn, *args, **kw):
         if getattr(fn, 'allowAnonymousAccess', None) or callData.auth is None:
             return True
@@ -394,339 +315,49 @@ class rMakeServer(apirpc.XMLApiServer):
           or callData.auth.getCertificateUser()):
             return True
         user, password = (callData.auth.getUser(), callData.auth.getPassword())
-        if (user, password) == self.internalAuth:
-            return True
+        #if (user, password) == self.internalAuth:
+        #    return True
         self.auth.authCheck(user, password, callData.auth.getIP())
         return True
 
-    def _shutDown(self):
-        # we've gotten a request to halt, kill all jobs (they've run
-        # setpgrp) and then kill ourselves
-        if self.db:
-            self._stopAllJobs()
-            self._killAllPids()
-        if self._dispatcherPid:
-            pid = self._dispatcherPid
-            self._dispatcherPid = None
-            self._killPid(pid)
-        if self._messageBusPid:
-            pid = self._messageBusPid
-            self._messageBusPid = None
-            self._killPid(pid)
-        if hasattr(self, 'plugins') and self.plugins:
-            self.plugins.callServerHook('server_shutDown', self)
-        sys.exit(0)
-
     def _subscribeToJob(self, job):
+        """Take ownership of a job and forward changes to subscribers"""
         for sub in self._subscribers:
             sub.attach(job)
+        job.own()
 
-    def _subscribeToBuild(self, build):
-        for sub in self._subscribers:
-            if hasattr(sub, 'attachToBuild'):
-                sub.attachToBuild(build)
-            else:
-                sub.attach(build.getJob())
+    #def _setUpInternalUser(self):
+    #    user = ''.join([chr(random.randint(ord('a'),
+    #                       ord('z'))) for x in range(10)])
+    #    password = ''.join([chr(random.randint(ord('a'), 
+    #                            ord('z'))) for x in range(10)])
+    #    if isinstance(self.uri, str):
+    #        schema, url = urllib.splittype(self.uri)
+    #        if schema in ('http', 'https'):
+    #            host, rest = urllib.splithost(url)
+    #            olduser, host = urllib.splituser(host)
+    #            uri = '%s://%s:%s@%s%s' % (schema, user, password, host, rest)
+    #            self.uri = uri
 
-    def _startBuild(self, job):
-        pid = self._fork('Job %s' % job.jobId, close=True)
-        if pid:
-            self._buildPids[pid] = job.jobId # mark this pid for potential 
-                                             # killing later
-            return job.jobId
-        else:
-            try:
-                try:
-                    # we want to be able to kill this build process and
-                    # all its children with one swell foop.
-                    os.setpgrp()
-                    self.db.reopen()
+    #    self.internalAuth = (user, password)
 
-                    buildMgr = self.getBuilder(job)
-                    self._subscribeToBuild(buildMgr)
-                    # Install builder-specific signal handlers.
-                    buildMgr._installSignalHandlers()
-                    # need to reinitialize the database in the forked child 
-                    # process
-                    buildCfg = job.getMainConfig()
+    def __init__(self, cfg, serverLogger):
+        self.nodeClient = None
+        self.cfg = cfg
+        apirpc.XMLApiServer.__init__(self, uri=None, logger=serverLogger)
 
-                    if buildCfg.jobContext:
-                        buildMgr.setJobContext(buildCfg.jobContext)
-                    # don't do anything else in here, buildAndExit has 
-                    # handling for ensuring that exceptions are handled 
-                    # correctly.
-                    buildMgr.buildAndExit()
-                except Exception, err:
-                    tb = traceback.format_exc()
-                    buildMgr.logger.error('Build initialization failed: %s' %
-                                          err, tb)
-                    job.exceptionOccurred(err, tb)
-            finally:
-                os._exit(2)
+        self.db = database.Database(cfg.getDbPath(), cfg.getDbContentsPath())
+        self.auth = auth.AuthenticationManager(cfg.getAuthUrl(), self.db)
+        self.nodeClient = mn_subscriber.RPCNodeClient(self.cfg, self)
 
-    def _failCurrentJobs(self, jobs, reason):
-        if self.uri is None:
-            self.warning('Cannot fail current jobs without a URI')
-            return False
-        if not jobs:
-            return
-        from rmake.server.client import rMakeClient
-        pid = self._fork('Fail current jobs')
-        if pid:
-            self.debug('Fail current jobs forked pid %d' % pid)
-            return
-        try:
-            client = rMakeClient(self.uri)
-            # make sure the main process is up and running before we 
-            # try to communicate w/ it
-            client.ping()
-            for job in jobs:
-                self._subscribeToJob(job)
-                publisher = job.getPublisher()
-                job.jobFailed(reason)
-            os._exit(0)
-        except:
-            self.exception('Error stopping current jobs')
-            os._exit(1)
-
-    def _failJob(self, jobId, reason):
-        pid = self._fork('Fail job %s' % jobId)
-        if pid:
-            self.debug('Fail job %s forked pid %d' % (jobId, pid))
-            return
-        try:
-            from rmake.server.client import rMakeClient
-            client = rMakeClient(self.uri)
-            # make sure the main process is up and running before we 
-            # try to communicate w/ it
-            client.ping()
-            job = self.db.getJob(jobId)
-            self._subscribeToJob(job)
-            publisher = job.getPublisher()
-            job.own()
-            job.jobFailed(reason)
-            os._exit(0)
-        except:
-            self.exception('Error stopping job %s' % jobId)
-            os._exit(1)
-
-    def _pidDied(self, pid, status, name=None):
-        jobId = self._buildPids.pop(pid, None)
-        if jobId and status:
-            job = self.db.getJob(jobId)
-            if job.isBuilding() or job.isQueued():
-                self._failJob(jobId, self._getExitMessage(pid, status, name))
-        apirpc.XMLApiServer._pidDied(self, pid, status, name)
-
-        for attr, descr, logpath in [
-                ('proxyPid', 'proxy', self.cfg.getProxyLogPath()),
-                ('repositoryPid', 'repository', self.cfg.getReposLogPath()),
-                ('_messageBusPid', 'message bus',
-                    self.cfg.getMessageBusLogPath()),
-                ('_dispatcherPid', 'dispatcher',
-                    self.cfg.getDispatcherLogPath()),
-                ]:
-            if pid != getattr(self, attr):
-                continue
-            if not self._halt:
-                self.error("""
-    Internal %s died - shutting down rMake.
-    The %s can die on startup due to an earlier unclean shutdown of
-    rMake.  Check for orphaned processes running under the '%s' user,
-    and check the log file at %s for detailed diagnostics.
-    """ % (descr, descr, constants.rmakeUser, logpath))
-                self._halt = True
-            setattr(self, attr, None)
-
-        self.plugins.callServerHook('server_pidDied', self, pid, status)
-
-    def _stopJob(self, job):
-        if job.isQueued(): # job isn't started yet, just stop it.
-                           # FIXME: when we make this multiprocess,
-                           # there will be a race condition here.
-                           # We'll have to hold the queue lock
-                           # while we make this check.
-            return
-        elif job.isCommitting():
-            return
-        elif not job.isRunning():
-            raise errors.RmakeError('Cannot stop job %s - it is'
-                                    ' already stopped' % job.jobId)
-
-        if job.pid not in self._buildPids:
-            self.warning('job %s is not in active job list', job.jobId)
-            return
-        else:
-            self._killPid(job.pid, killGroup=True,
-                          hook=self.handleRequestIfReady)
-
-    def _stopAllJobs(self):
-        for pid, jobId in self._buildPids.items():
-            self._killPid(pid, hook=self.handleRequestIfReady, killGroup=True)
-        self._serveLoopHook()
-
-    def _exit(self, exitCode):
-        sys.exit(exitCode)
-
-    def _fork(self, name, close=False):
-        pid = apirpc.XMLApiServer._fork(self, name)
-        if pid:
-            return pid
-        self._close()
-        if not close:
-            self.db.reopen()
-        return pid
-
-    def _close(self):
-        apirpc.XMLApiServer._close(self)
-        if getattr(self, 'db', None):
-            self.db.close()
-
-    def _setUpInternalUser(self):
-        user = ''.join([chr(random.randint(ord('a'),
-                           ord('z'))) for x in range(10)])
-        password = ''.join([chr(random.randint(ord('a'), 
-                                ord('z'))) for x in range(10)])
-        if isinstance(self.uri, str):
-            schema, url = urllib.splittype(self.uri)
-            if schema in ('http', 'https'):
-                host, rest = urllib.splithost(url)
-                olduser, host = urllib.splituser(host)
-                uri = '%s://%s:%s@%s%s' % (schema, user, password, host, rest)
-                self.uri = uri
-
-        self.internalAuth = (user, password)
-
-    def _startMessageBus(self):
-        if self.cfg.messageBusHost is not None:
-            return
-        messageBusLog = self.cfg.getMessageBusLogPath()
-        messageLog = self.cfg.logDir + '/messages/messagebus.log'
-        util.mkdirChain(os.path.dirname(messageLog))
-        m = messagebus.MessageBus('', self.cfg.messageBusPort, messageBusLog,
-                messageLog)
-        port = m.getPort()
-        pid = self._fork('Message Bus')
-        if pid:
-            m._close()
-            self._messageBusPid = pid
-        else:
-            try:
-                try:
-                    m._installSignalHandlers()
-                    self._close()
-                    self._runServer(m, m.serve_forever, 'Message Bus')
-                except Exception, err:
-                    m.error('Startup failed: %s: %s' % (err,
-                                                        traceback.format_exc()))
-            finally:
-                os._exit(3)
-
-    def _startDispatcher(self):
-        pid = self._fork('Dispatcher')
-        if pid:
-            self._dispatcherPid = pid
-            return
-        try:
-            d = dispatcher.DispatcherServer(self.cfg, self.db)
-            try:
-                d._installSignalHandlers()
-                self._close()
-                self.db.reopen()
-                self._runServer(d, d.serve, 'Dispatcher')
-            except Exception, err:
-                d.error('Startup failed: %s: %s' % (err,
-                                                    traceback.format_exc()))
-        finally:
-            os._exit(3)
-
-    def _runServer(self, server, fn, name, *args, **kw):
-        try:
-            fn()
-            os._exit(0)
-        except SystemExit, err:
-            os._exit(err.args[0])
-        except errors.uncatchableExceptions, err:
-            # Keyboard Interrupt, etc.
-            os._exit(1)
-        except socket.error, err:
-            err = '%s Died: %s\n' % (name, err)
-        except Exception, err:
-            try:
-                err = '%s Died: %s\n%s' % (name, err, traceback.format_exc())
-                server.error(err)
-                os._exit(1)
-            except:
-                os._exit(2)
-
-    def __init__(self, uri, cfg, repositoryPid=None, proxyPid=None,
-                 pluginMgr=None, quiet=False):
-        util.mkdirChain(cfg.logDir)
-        logPath = cfg.logDir + '/rmake.log'
-        rpcPath = cfg.logDir + '/xmlrpc.log'
-        serverLogger = ServerLogger()
-        serverLogger.disableRPCConsole()
-        serverLogger.logToFile(logPath)
-        serverLogger.logRPCToFile(rpcPath)
-        if quiet:
-            serverLogger.setQuietMode()
-        else:
-            if cfg.verbose:
-                logLevel = logging.DEBUG
-            else:
-                logLevel = logging.INFO
-            serverLogger.enableConsole(logLevel)
-        self._messageBusPid = None
-        self._dispatcherPid = None
-        self._nodeClient = None
-        serverLogger.info('*** Started rMake Server at pid %s (serving at %s)' % (os.getpid(), uri))
-        try:
-            self._initialized = False
-            self.db = None
-
-            # forked jobs that are currently active
-            self._buildPids = {}
-
-            self.uri = uri
-            self.cfg = cfg
-            self.repositoryPid = repositoryPid
-            self.proxyPid = proxyPid
-            apirpc.XMLApiServer.__init__(self, uri, logger=serverLogger,
-                                 forkByDefault = True,
-                                 sslCertificate=cfg.getSslCertificatePath(),
-                                 caCertificate=cfg.getCACertificatePath())
-            self._setUpInternalUser()
-            self.db = database.Database(cfg.getDbPath(),
-                                        cfg.getDbContentsPath())
-            self.auth = auth.AuthenticationManager(cfg.getAuthUrl(), self.db)
-
-            if pluginMgr is None:
-                pluginMgr = plugins.PluginManager([])
-            self.plugins = pluginMgr
-
-            self._startMessageBus()
-            self._startDispatcher()
-            self._nodeClient = mn_subscriber.rMakeServerNodeClient(self.cfg,
-                    self)
-            self._nodeClient.connect()
-
-            # any jobs that were running before are not running now
-            subscriberLog = logger.Logger('susbscriber',
-                                          self.cfg.getSubscriberLogPath())
-            self.worker = workerproxy.WorkerProxy(self.cfg, self._nodeClient,
-                    self._logger)
-            dbLogger = subscriber._JobDbLogger(self.db)
-            nodesub = mn_subscriber._RmakeBusPublisher(self._nodeClient)
-            # note - it's important that the db logger
-            # comes first, before the general publisher,
-            # so that whatever published is actually 
-            # recorded in the DB.
-            self._subscribers = [dbLogger, nodesub]
-            self.plugins.callServerHook('server_postInit', self)
-        except errors.uncatchableExceptions:
-            raise
-        except Exception, err:
-            self.error('Error initializing rMake Server:\n  %s\n%s', err,
-                        traceback.format_exc())
-            self._try('halt', self._shutDown)
-            raise
+        subscriberLog = logger.Logger('susbscriber',
+                self.cfg.getSubscriberLogPath())
+        self.worker = workerproxy.WorkerProxy(self.cfg, self.nodeClient,
+                self._logger)
+        dbLogger = subscriber._JobDbLogger(self.db)
+        nodesub = mn_subscriber._RmakeBusPublisher(self.nodeClient)
+        # note - it's important that the db logger
+        # comes first, before the general publisher,
+        # so that whatever published is actually 
+        # recorded in the DB.
+        self._subscribers = [dbLogger, nodesub]

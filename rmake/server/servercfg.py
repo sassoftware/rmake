@@ -31,7 +31,7 @@ import urllib2
 
 from conary import dbstore
 from conary.lib import log, cfg, util
-from conary.lib.cfgtypes import CfgPath, CfgString, CfgInt
+from conary.lib.cfgtypes import CfgPath, CfgString, CfgInt, CfgLineList
 from conary.lib.cfgtypes import CfgBool, CfgPathList, CfgDict, CfgList, ParseError
 from conary.conarycfg import CfgUserInfo
 
@@ -197,13 +197,16 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
     reposUser         = CfgUserInfo
     useResolverCache  = (CfgBool, True)
     dbPath            = dbstore.CfgDriver
-    reposUrl        = (CfgString, 'https://LOCAL:7777')
-    rmakeUrl        = (CfgString, 'https://localhost:9999')
+    rmakeUrl        = (CfgLineList(CfgString), [])
     rbuilderUrl     = (CfgString, None)
+    rpcWorkers      = (CfgInt, 1)
     # if None, start one locally
     # if "LOCAL", don't start one but still use localhost
     messageBusHost  = (CfgString, None)
     messageBusPort  = (CfgInt, 50900)
+
+    _default_unix_socket = 'unix:///var/lib/rmake/socket'
+    _default_https_socket = 'https://localhost:9999'
 
     _cfg_aliases = [
             ('proxy',       'proxyUrl'),
@@ -240,19 +243,14 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
         else:
             return None
 
-    def getServerUri(self):
-        rmakeUrl = self.rmakeUrl
-        if '://' in rmakeUrl:
-            return rmakeUrl
-        else:
-            return 'unix://' + rmakeUrl
-
-    def getSocketPath(self):
-        rmakeUrl = self.getServerUri()
-        type, rest = urllib.splittype(rmakeUrl)
-        if type != 'unix':
-            return None
-        return os.path.normpath(rest)
+    def getServerUris(self):
+        if self.rmakeUrl:
+            return self.rmakeUrl
+        uris = [self._default_unix_socket]
+        # Only enable remote access by default if auth is configured
+        if self.getAuthUrl():
+            uris.append(self._default_https_socket)
+        return uris
 
     def getDbPath(self):
         if not self.dbPath:
@@ -262,6 +260,12 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
 
     def getDbContentsPath(self):
         return self.serverDir + '/jobcontents'
+
+    def getServerLogPath(self):
+        return self.logDir + '/rmake-server.log'
+
+    def getXMLRPCLogPath(self):
+        return self.logDir + '/xmlrpc.log'
 
     def getContentsPath(self):
         return self.serverDir + '/repos/contents'
@@ -386,8 +390,10 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
             self.hostName = procutil.getNetName()
         currUser = pwd.getpwuid(os.getuid()).pw_name
         cfgPaths = ['logDir', 'lockDir', 'serverDir']
-        socketPath = self.getSocketPath()
-        if socketPath:
+        for uri in self.getServerUris():
+            if not uri.startswith('unix://'):
+                continue
+            socketPath = uri[7:]
             if not os.access(os.path.dirname(socketPath), os.W_OK):
                 log.error('cannot write to socketPath directory at %s - cannot start server' % os.path.dirname(socketPath))
                 sys.exit(1)
@@ -421,6 +427,9 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
                         'Please ensure you have a line "rbuilderUrl '
                         'https://<yourRbuilder>" set correctly in your serverrc '
                         'file.  Error: %s' % (self.rbuilderUrl, err))
+        elif any(x.startswith('http') for x in self.getServerUris()):
+            log.warning("HTTP(S) is enabled but rbuilderUrl is not set. "
+                "Incoming HTTP requests will not be authenticated.")
 
     def reposRequiresSsl(self):
         return urllib.splittype(self.reposUrl)[0] == 'https'
@@ -433,9 +442,14 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
         """
             Return True if any service run by rMake requires ssl certificates
         """
-        return ((not self.isExternalRepos() and self.reposRequiresSsl())
-                or (not self.isExternalProxy() and self.proxyRequiresSsl())
-                or urllib.splittype(self.getServerUri())[0] == 'https')
+        if not self.isExternalRepos() and self.reposRequiresSsl():
+            return True
+        if not self.isExternalProxy() and self.proxyRequiresSsl():
+            return True
+        for uri in self.getServerUris():
+            if uri.startswith('https://'):
+                return True
+        return False
 
     def _sanityCheckForSSL(self):
         """Check SSL settings, create SSL certificate if missing.

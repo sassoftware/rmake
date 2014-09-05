@@ -80,7 +80,7 @@ class Logger(object):
 
     def close(self):
         for logger in self._loggers:
-            for handler in logger.handlers:
+            for handler in list(logger.handlers):
                 # if handler not in this list, it's already been cleaned up.
                 if handler in logging._handlers:
                     handler.close()

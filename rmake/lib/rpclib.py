@@ -240,34 +240,6 @@ class XMLRPCResponseHandler(object):
     def close(self):
         pass
 
-    def forkResponseFn(self, forkFunction, fn, *args, **kw):
-        pid = forkFunction()
-        if pid:
-            if SSL and isinstance(self.request.request, SSLConnection):
-                sslsocket = self.request.request
-                socket = sslsocket.socket
-                sslsocket.close = socket.close
-                sslsocket.sslbio = None
-                sslsocket.sockbio = None
-            else:
-                socket = self.request.request
-            # Python 2.7 tries to shutdown() first which the parent must not do
-            # after handing off
-            socket.close()
-            return
-        try:
-            try:
-                rv = fn(*args, **kw)
-                self.sendResponse(rv)
-                os._exit(0)
-            except:
-                if self.debug:
-                    from conary.lib import debugger
-                    debugger.post_mortem()
-                self.sendInternalError()
-        finally:
-            os._exit(1)
-
     def serializeResponse(self, response):
         if isinstance(response, xmlrpclib.Fault):
             response = xmlrpc_null.dumps(response)

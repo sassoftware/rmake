@@ -79,6 +79,15 @@ class MessageBusClient(object):
         self.callbacks = {}
         self.messages = []
 
+    def postFork(self):
+        """
+        Call this to close file descriptors and destroy shared state after
+        forking
+        """
+        self.disconnect()
+        self.logger.close()
+        self.session.sessionId = None
+
     def setConnectionTimeout(self, timeout):
         self.session.connectionTimeout = timeout
 
@@ -117,9 +126,9 @@ class MessageBusClient(object):
         self.session.flush()
 
     def popMessages(self):
-        messages = self.messages
+        messageList = self.messages
         self.messages = []
-        return messages
+        return messageList
 
     def sendMessage(self, destination, m, targetId=None):
         m.direct(destination, targetId)
@@ -203,6 +212,7 @@ class _SessionClient(asyncore.dispatcher):
         self.connectionTimeout = connectionTimeout
         self.connectionStart = None
         self.connected = False
+        self.closing = False
         self.bufferSize = 4096
         self.logger = logger
         self.outMessages = []
@@ -213,6 +223,7 @@ class _SessionClient(asyncore.dispatcher):
 
     def connect(self):
         self.connected = False
+        self.closing = False
         if not self._fileno:
             self.set_socket(socket.socket())
         self._connect()
@@ -248,13 +259,9 @@ class _SessionClient(asyncore.dispatcher):
             time.sleep(3)
 
     def disconnect(self):
+        self.closing = True
         self.close()
         self.socket = None
-
-    def handle_error(self):
-        # any exception that makes its way outside of more discerning
-        # try/excepts is fatal.
-        raise
 
     def handle_expt(self):
         if not self.connected:
@@ -286,7 +293,7 @@ class _SessionClient(asyncore.dispatcher):
         try:
             m = self.messageProcessor.processData(self.recv,
                                                   self.bufferSize)
-        except socket.error, e:
+        except socket.error:
             self.handle_error()
             return
         if m:
@@ -324,7 +331,8 @@ class _SessionClient(asyncore.dispatcher):
             raise
 
     def close(self):
-        self.logger.error('Lost connection to message bus.')
+        if not self.closing:
+            self.logger.error('Lost connection to message bus.')
         self.accepting = False
         self.connected = False
         self.del_channel()
@@ -333,7 +341,7 @@ class _SessionClient(asyncore.dispatcher):
         except socket.error, error:
             if error.args[0] not in (errno.ENOTCONN, errno.EBADF):
                 raise
-        if self.connectionTimeout:
+        if self.connectionTimeout and not self.closing:
             self.connect()
 
     def sendMessage(self, m):

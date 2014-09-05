@@ -148,7 +148,7 @@ class rMakeWorkerNodeServer(worker.Worker):
                 self.client.updateStatus(info, commandIds)
         worker.Worker._serveLoopHook(self)
 
-    def handleRequestIfReady(self, sleep):
+    def handleRequestIfReady(self, sleep=0.1):
         # override standard worker's poll mechanism to check the bus 
         # instead.
         try:

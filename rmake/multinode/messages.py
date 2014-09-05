@@ -86,6 +86,18 @@ class NodeInfo(Message):
         self.payload.nodeInfo = thaw('MachineInformation',
                                      self.payload.nodeInfo)
 
+
+class StopJobRequest(Message):
+    """RPC instructs server to stop a job"""
+    messageType = 'STOP_JOB'
+
+    def set(self, jobId):
+        self.payload.jobId = jobId
+
+    def getJobId(self):
+        return self.payload.jobId
+
+
 class _Command(Message):
     """
         Superclass for command requests.

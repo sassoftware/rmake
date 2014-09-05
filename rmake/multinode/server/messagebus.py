@@ -83,12 +83,13 @@ class MessageBus(apirpc.ApiServer):
         self._dispatcher = MessageBusDispatcher(self)
 
     def _close(self):
-        apirpc.ApiServer._close(self)
         self._server.close()
         for session in self._pendingSessions:
             session.close()
         for session in self._sessions.itervalues():
-            session.close()
+            if session is not None:
+                session.close()
+        apirpc.ApiServer._close(self)
 
     def listSessions(self):
         return [ x for x in self._sessions.values() if x is not None ]
@@ -161,7 +162,7 @@ class MessageBus(apirpc.ApiServer):
         return bool([ x for x in self._sessions.itervalues() 
                       if x and x.writable()])
 
-    def handleRequestIfReady(self, sleepTime):
+    def handleRequestIfReady(self, sleepTime=None):
         asyncore.poll2(timeout=sleepTime, map=self._map)
 
     def serve_once(self):

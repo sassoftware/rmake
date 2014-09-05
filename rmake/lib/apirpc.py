@@ -121,11 +121,10 @@ class ApiServer(server.Server):
     _apiMinorVersion = constants.apiMinorVersion
 
     _debug = False
-    def __init__(self, logger=None, forkByDefault = False):
+    def __init__(self, logger=None):
         if logger is None:
             logger = BaseRPCLogger('server')
         server.Server.__init__(self, logger)
-        self._forkByDefault = forkByDefault
         self._methods = {}
         self._addMethods(self)
 
@@ -165,11 +164,6 @@ class ApiServer(server.Server):
         for name, attr in apiServer._listMethods():
             self._methods[name] = attr
 
-    def _shouldMethodFork(self, method):
-        if hasattr(method, 'forking'):
-            return method.forking
-        return self._forkByDefault
-
     def _dispatch2(self, methodName, auth, responseHandler, args):
         """Dispatches call to methodName, unfreezing data in args, checking
            method version as well.
@@ -202,12 +196,7 @@ class ApiServer(server.Server):
 
         timestr = time.strftime('%x %X')
         self._logger.logRPCCall(callData, methodName, args)
-        if self._shouldMethodFork(method):
-            responseHandler.forkResponseFn(lambda: self._fork(methodName),
-                                           callData.callFunction, method,
-                                           callData, *args)
-        else:
-            responseHandler.callResponseFn(callData.callFunction,
+        responseHandler.callResponseFn(callData.callFunction,
                                            method, callData, *args)
 
     def getReturnValue(self, rv, method, methodVersion):
@@ -229,13 +218,13 @@ class XMLApiServer(ApiServer):
     # if set to True, will try to send exceptions to a debug prompt on 
     # the console before returning them across the wire
 
-    def __init__(self, uri=None, logger=None, forkByDefault=False, 
+    def __init__(self, uri=None, logger=None,
                  sslCertificate=None, caCertificate=None, localOnly=False):
         """ @param serverObj: The XMLRPCServer that will serve data to 
             the _dispatch method.  If None, caller is responsible for 
             giving information to be dispatched.
         """
-        ApiServer.__init__(self, logger, forkByDefault=forkByDefault)
+        ApiServer.__init__(self, logger)
         self.uri = uri
         if uri:
             if isinstance(uri, str):
@@ -390,6 +379,8 @@ class CallData(object):
                 rv = ''
             response = (True, rv)
         except Exception, err:
+            if not isinstance(err, errors.RmakeError):
+                self.logger.exception("Exception in API call:")
             response = (False, _freezeException(err))
             if self.debug:
                 from conary.lib import debugger

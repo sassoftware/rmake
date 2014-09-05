@@ -171,30 +171,15 @@ class Daemon(options.MainHandler):
             self.error("could not kill %s: no pid found." % self.name)
             sys.exit(1)
 
-        pipeFD = os.popen("ps -p %d -o comm=" %pid)
-        procName = pipeFD.readline().strip()
-        pipeFD.close()
-        if not procName:
-            return
-
-        if procName not in sys.argv[0]:
-            self.error("pid: %d does not seem to be a valid %s." % (pid,
-                                                                   self.name))
-            sys.exit(1)
         self.info("killing %s pid %d" % (self.name, pid))
         try:
-            os.kill(pid, signal.SIGINT)
+            os.kill(pid, signal.SIGTERM)
             timeSlept = 0
             killed = False
             maxTime = 10
             while timeSlept < maxTime:
                 # loop waiting for the process to die
-                pipeFD = os.popen("ps -p %d -o comm=" %pid)
-                procName = pipeFD.readline().strip()
-                pipeFD.close()
-                if not procName or procName.endswith('<defunct>'):
-                    killed = True
-                    break
+                os.kill(pid, 0)
                 time.sleep(.5)
                 timeSlept += .5
             if not killed:
@@ -205,7 +190,7 @@ class Daemon(options.MainHandler):
                 raise
             else:
                 self.info("process not found; removing lock file")
-                self.removeLockfile()
+                self.removeLockFile()
         else:
             #Do we really want to remove the PID?  Shouldn't we
             #let the daemon process do it?
@@ -264,17 +249,16 @@ class Daemon(options.MainHandler):
 
         pid = self.getPidFromLockFile()
         if pid:
-            # check if the pid is actually valid...
-            pipeFD = os.popen("ps -p %s -o pid="% pid)
-            pidLine = pipeFD.readline()
-            pipeFD.close()
-
-            if str(pid) in pidLine:
-                self.error("Daemon already running as pid %s", pid)
-                sys.exit(1)
-            else:
+            try:
+                os.kill(pid, 0)
+            except OSError, err:
+                if err.args[0] != errno.ESRCH:
+                    raise
                 self.info("Old %s pid seems to be invalid. killing." % self.name)
                 self.kill()
+            else:
+                self.error("Daemon already running as pid %s", pid)
+                sys.exit(1)
 
         conaryPath = os.path.dirname(sys.modules['conary'].__file__)
         if '/site-packages/' not in conaryPath:
