@@ -158,24 +158,62 @@ class LocalChrootCache(ChrootCacheInterface):
         return os.path.join(self.cacheDir, tar)
 
 
-class BtrfsChrootCache(ChrootCacheInterface):
+class DirBasedChrootCacheInterface(ChrootCacheInterface):
+    """
+    Base class for chroot caches that look like a directory on disk.
+    """
+    suffix = ''
 
-    def __init__(self, cacheDir, chrootHelperPath):
+    def __init__(self, cacheDir):
         self.cacheDir = cacheDir
-        self.chrootHelperPath = chrootHelperPath
 
-    def _callHelper(self, args):
-        args = [self.chrootHelperPath] + list(args)
-        p = subprocess.Popen(args, shell=False, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        if p.returncode:
-            msg = "Failed to invoke btrfs helper"
-            if stdout.strip():
-                msg += "\nstdout:\n" + stdout
-            if stderr.strip():
-                msg += "\nstderr:\n" + stderr
-            raise RuntimeError(msg)
+    def _fingerPrintToPath(self, chrootFingerprint):
+        basename = sha1ToString(chrootFingerprint) + self.suffix
+        return os.path.join(self.cacheDir, basename)
+
+    def findPartialMatch(self, manifest):
+        """
+        Scan existing cached chroots for one that contains a subset of the
+        specified manifest
+        """
+        bestScore = -1
+        bestFingerprint = None
+        for name in os.listdir(self.cacheDir):
+            if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
+                continue
+            cached = ChrootManifest.read(os.path.join(self.cacheDir, name))
+            if not manifest:
+                continue
+            score = manifest.score(cached)
+            if score > bestScore:
+                bestScore = score
+                bestFingerprint = sha1FromString(name[:40])
+        return bestFingerprint
+
+    def findOld(self, hours):
+        """
+        List all chroots that haven't been used in more than the specified
+        interval.
+        """
+        thresh = time.time() - 3600 * hours
+        old = []
+        for name in os.listdir(self.cacheDir):
+            if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
+                continue
+            fingerprint = sha1FromString(name[:40])
+            st = util.lstat(os.path.join(self.cacheDir, name, '.used'))
+            if st:
+                atime = st.st_mtime
+            else:
+                st = util.lstat(os.path.join(self.cacheDir, name))
+                if st:
+                    atime = st.st_atime
+                else:
+                    # Disappeared
+                    continue
+            if atime < thresh:
+                old.append(fingerprint)
+        return old
 
     def store(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
@@ -192,76 +230,81 @@ class BtrfsChrootCache(ChrootCacheInterface):
             # Locked an unlinked file
             return
         if not os.path.exists(path):
-            self._callHelper(["--btrfs-snapshot", path, root])
+            self._copy(root, path)
         os.unlink(lock.name)
         lock.close()
 
     def restore(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
         if os.path.isdir(root):
-            self._callHelper(["--btrfs-delete", root])
+            self._remove(root)
         open(os.path.join(path, '.used'), 'w').close()
-        self._callHelper(["--btrfs-snapshot", root, path])
+        self._copy(path, root)
         util.removeIfExists(os.path.join(root, '.used'))
 
     def remove(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
-        self._callHelper(["--btrfs-delete", path])
+        self._remove(path)
 
     def hasChroot(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
         return os.path.isdir(path)
 
+    def _call(self, args):
+        p = subprocess.Popen(args, shell=False, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        if p.returncode:
+            msg = "Failed to operate on chroot"
+            if stdout.strip():
+                msg += "\nstdout:\n" + stdout
+            if stderr.strip():
+                msg += "\nstderr:\n" + stderr
+            raise RuntimeError(msg)
+
+    def _copy(self, source, dest):
+        raise NotImplementedError
+
+    def _remove(self, path):
+        raise NotImplementedError
+
+
+class BtrfsChrootCache(DirBasedChrootCacheInterface):
+    suffix = '.btrfs'
+
+    def __init__(self, cacheDir, chrootHelperPath):
+        super(BtrfsChrootCache, self).__init__(cacheDir)
+        self.chrootHelperPath = chrootHelperPath
+
     def createRoot(self, root):
-        marker = os.path.join(root, '.btrfs')
+        marker = os.path.join(root, self.suffix)
         if os.path.exists(marker):
             return
-        self._callHelper(["--btrfs-create", root])
+        self._call([self.chrootHelperPath, "--btrfs-create", root])
         open(marker, 'w').close()
 
     def removeRoot(self, root):
-        if os.path.exists(os.path.join(root, '.btrfs')):
-            self._callHelper(["--btrfs-delete", root])
+        if os.path.exists(os.path.join(root, self.suffix)):
+            self._remove(root)
             return True
         else:
             return False
 
-    def _fingerPrintToPath(self, chrootFingerprint):
-        basename = sha1ToString(chrootFingerprint) + '.btrfs'
-        return os.path.join(self.cacheDir, basename)
+    def _copy(self, source, dest):
+        self._call([self.chrootHelperPath, "--btrfs-snapshot", dest, source])
 
-    def findPartialMatch(self, manifest):
-        bestScore = -1
-        bestFingerprint = None
-        for name in os.listdir(self.cacheDir):
-            if len(name) != 46 or not name.endswith('.btrfs'):
-                continue
-            cached = ChrootManifest.read(os.path.join(self.cacheDir, name))
-            if not manifest:
-                continue
-            score = manifest.score(cached)
-            if score > bestScore:
-                bestScore = score
-                bestFingerprint = sha1FromString(name[:40])
-        return bestFingerprint
+    def _remove(self, path):
+        self._call([self.chrootHelperPath, "--btrfs-delete", path])
 
-    def findOld(self, hours):
-        thresh = time.time() - 3600 * hours
-        old = []
-        for name in os.listdir(self.cacheDir):
-            if len(name) != 46 or not name.endswith('.btrfs'):
-                continue
-            fingerprint = sha1FromString(name[:40])
-            st = util.lstat(os.path.join(self.cacheDir, name, '.used'))
-            if st:
-                atime = st.st_mtime
-            else:
-                st = util.lstat(os.path.join(self.cacheDir, name))
-                if st:
-                    atime = st.st_atime
-                else:
-                    # Disappeared
-                    continue
-            if atime < thresh:
-                old.append(fingerprint)
-        return old
+
+class HardlinkChrootCache(DirBasedChrootCacheInterface):
+    suffix = '.linked'
+
+    def _copy(self, source, dest):
+        # -T -- never copy source as a subdir of dest if dest already exists
+        # -a -- archive i.e. recurse and don't follow symlinks
+        # -l -- hardlink files instead of copying
+        self._call(['/bin/cp', '-Tal', source, dest])
+
+    def _remove(self, path):
+        self._call(['/bin/rm', '-rf', path])

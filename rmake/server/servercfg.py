@@ -128,6 +128,8 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
             return None
         elif self.chrootCache[0] == 'local':
             return chrootcache.LocalChrootCache(self.chrootCache[1])
+        elif self.chrootCache[0] == 'hardlink':
+            return chrootcache.HardlinkChrootCache(self.chrootCache[1])
         elif self.chrootCache[0] == 'btrfs':
             return chrootcache.BtrfsChrootCache(self.chrootCache[1],
                     self.getChrootHelper())
@@ -137,7 +139,7 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
     def _getChrootCacheDir(self):
         if not self.chrootCache:
             return None
-        elif self.chrootCache[0] in ('local', 'btrfs'):
+        elif self.chrootCache[0] in ('local', 'btrfs', 'hardlink'):
             return self.chrootCache[1]
         return None
 
