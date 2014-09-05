@@ -34,13 +34,14 @@ class GunicornServer(base.BaseApplication):
     def load_config(self):
         self.cfg.set('proc_name', 'rmake rpc')
         self.cfg.set('workers', self.serverCfg.rpcWorkers)
-        self.cfg.set('timeout', 60)
+        self.cfg.set('timeout', 3600) # FIXME
         # The config defaults might have been initialized as root so reset
         # uid/gid to the current user
         self.cfg.set('user', os.geteuid())
         self.cfg.set('group', os.getegid())
         worker = SyncWorker
-        self.cfg.set('worker_class', '%s.%s' % (worker.__module__, worker.__name__))
+        self.cfg.set('worker_class',
+                '%s.%s' % (worker.__module__, worker.__name__))
 
         bind = []
         for uri in self.serverCfg.getServerUris():
@@ -56,7 +57,8 @@ class GunicornServer(base.BaseApplication):
                     port = 9999
                 bind.append('[::]:%d' % port)
                 if scheme == 'https':
-                    self.cfg.set('certfile', self.serverCfg.getSslCertificatePath())
+                    self.cfg.set('certfile',
+                            self.serverCfg.getSslCertificatePath())
             else:
                 raise ValueError("Invalid rmakeUrl %s" % (uri,))
         self.cfg.set('bind', bind)

@@ -218,8 +218,8 @@ class XMLApiServer(ApiServer):
     # if set to True, will try to send exceptions to a debug prompt on 
     # the console before returning them across the wire
 
-    def __init__(self, uri=None, logger=None,
-                 sslCertificate=None, caCertificate=None, localOnly=False):
+    def __init__(self, uri=None, logger=None, sslCertificate=None,
+            localOnly=False):
         """ @param serverObj: The XMLRPCServer that will serve data to 
             the _dispatch method.  If None, caller is responsible for 
             giving information to be dispatched.
@@ -249,12 +249,8 @@ class XMLApiServer(ApiServer):
 
                     useSSL = type == 'https'
                     serverObj = rpclib.AuthenticatedXMLRPCServer((host, port),
-                        logRequests=False, ssl=useSSL, sslCert=sslCertificate,
-                        caCert=caCertificate)
-                    if useSSL:
-                        serverObj.setAuthMethod(rpclib.CertificateAuth)
-                    else:
-                        serverObj.setAuthMethod(rpclib.HttpAuth)
+                        logRequests=False, ssl=useSSL, sslCert=sslCertificate)
+                    serverObj.setAuthMethod(rpclib.HttpAuth)
             else:
                 serverObj = uri
         else:

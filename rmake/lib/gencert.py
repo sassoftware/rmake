@@ -99,23 +99,13 @@ def new_cert(keySize, subject, expiry, issuer=None, issuer_evp=None,
     return rsa, x509
 
 
-def new_sitename_extension(siteName):
-    return X509.new_extension('subjectAltName',
-        'email:%s@siteUserName.identifiers.rpath.internal' % siteName)
-
-
 def name_from_options(options):
     name = X509.X509_Name()
     for field in ('C', 'ST', 'L', 'O', 'OU', 'CN'):
         value = getattr(options, field)
         if value:
             setattr(name, field, value)
-
-    extensions = []
-    if options.site_user:
-        extensions.append(new_sitename_extension(options.site_user))
-
-    return name, extensions
+    return name, []
 
 
 def new_ca(options, isCA=True):
@@ -234,9 +224,6 @@ def main(args):
         help="Generate keys of size BITS")
     parser.add_option("-e", "--expiry", type="int",
         help="Certificate expires after this many days")
-
-    parser.add_option("--site-user",
-        help="Add a site-user altSubjectName field")
 
     for field in ('C', 'ST', 'L', 'O', 'OU', 'CN'):
         parser.add_option("--" + field, help="Add to the subject's name")
