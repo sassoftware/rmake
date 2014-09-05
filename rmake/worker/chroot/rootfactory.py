@@ -23,10 +23,12 @@
 
 import errno
 import fcntl
+import glob
 import grp
 import itertools
 import os
 import pwd
+import shutil
 import subprocess
 import sys
 import stat
@@ -118,6 +120,35 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             self.chrootCache.createRoot(self.cfg.root)
         rootfactory.BasicChroot.create(self, root)
 
+    @staticmethod
+    def _breakLink(path):
+        """
+        If path is a hard-link, replace it with a non-linked copy. Prevents
+        distant files from getting mutated when using the hardlink chrootcache
+        type.
+        """
+        try:
+            st = os.lstat(path)
+        except OSError, err:
+            if err.args[0] == errno.ENOENT:
+                return
+            raise
+        if st.st_nlink < 2 or not stat.S_ISREG(st.st_mode):
+            return
+        shutil.copy2(path, path + '.new')
+        os.rename(path + '.new', path)
+
+    def _breakLinks(self):
+        for path in [
+                '/root/tagscripts',
+                '/etc/*',
+                '/var/lib/conarydb/*',
+                '/var/lib/rpm/*',
+                '/var/log/*',
+                ]:
+            for path in glob.glob(self.root + path):
+                self._breakLink(path)
+
     def install(self):
         self.cfg.root = self.root
         self._lock(self.root, fcntl.LOCK_SH)
@@ -129,6 +160,7 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             return
 
         manifest, done = self._restoreFromCache()
+        self._breakLinks()
         if done:
             return
 
@@ -210,6 +242,7 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             self.chrootCache.store(self.chrootFingerprint, self.cfg.root)
             self.logger.info('caching chroot %s done',
                     strFingerprint)
+            self._breakLinks()
 
     def _copyInConary(self):
         conaryDir = os.path.dirname(sys.modules['conary'].__file__)

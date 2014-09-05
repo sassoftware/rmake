@@ -250,7 +250,8 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
         path = self._fingerPrintToPath(chrootFingerprint)
         if os.path.isdir(root):
             self._remove(root)
-        open(os.path.join(path, '.used'), 'w').close()
+        with util.AtomicFile(os.path.join(path, '.used')):
+            pass
         self._copy(path, root)
         util.removeIfExists(os.path.join(root, '.used'))
 
