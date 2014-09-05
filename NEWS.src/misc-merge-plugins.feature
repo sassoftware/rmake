@@ -5,5 +5,11 @@ rmake-multinode-server and rmake-node packages, move node-specific
 configuration from their serverrc into noderc, and ensure that the rmake-node
 service is started on boot.
 
-rMake servers no longer authenticate clients unless an explicit rbuilderUrl
-configuration option has been set.
+Authentication via the 'rbuilderUrl' serverrc option is no longer mandatory. If
+it is not set, and rmakeUrl is also not set, then rmake will only listen on the
+default UNIX socket at /var/lib/rmake/socket, equivalent to how rmake
+previously worked without the multinode plugin. If rbuilderUrl is set and
+rmakeUrl is not set, then rmake will listen both on the UNIX socket and also
+HTTPS on port 9999. If rmakeUrl is explicitly set with one or more http or
+https URLs, and rbuilderUrl is not set, then clients that connect remotely will
+not be authenticated.
