@@ -81,6 +81,7 @@ class BuildLogRecorder(asyncore.dispatcher, server.Server):
             if key != (self.key + '\n'):
                 csock.close()
             csock.send('OK\n')
+        csock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         # we only need to accept one request.
         self.del_channel()
         self.set_socket(csock)
