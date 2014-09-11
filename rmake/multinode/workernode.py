@@ -36,10 +36,12 @@ from rmake.messagebus.rpclib import SessionProxy
 from rmake.server import client
 from rmake.worker import worker
 
-from rmake.messagebus import busclient
 from rmake.multinode import messages
 from rmake.multinode import nodetypes
 from rmake.multinode import nodeclient
+
+# Register ResolveJob apiutils type
+from rmake.build import dephandler  # pyflakes=ignore
 
 
 class rMakeWorkerNodeServer(worker.Worker):
