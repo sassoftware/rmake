@@ -610,6 +610,7 @@ class rMakeChroot(ConaryBasedChroot):
             removeFailed = True
         else:
             os.system('rm -rf %s' % root)
+            self._clean_busy(root)
             if os.path.exists(root):
                 removeFailed = True
         if removeFailed and raiseError:
@@ -622,6 +623,23 @@ class rMakeChroot(ConaryBasedChroot):
                 ' please remove the old root by hand.' % root)
         self._unlock(root, cleanup=True)
         return not removeFailed
+
+    def _clean_busy(self, root):
+        try:
+            os.rmdir(root)
+            return
+        except OSError as err:
+            if err.args[0] != errno.EBUSY:
+                return
+        for n in range(5):
+            self.logger.error("chroot is busy, waiting and trying again to "
+                    "delete: %s", root)
+            time.sleep(n + 1)
+            try:
+                os.rmdir(root)
+            except OSError as err:
+                if err.args[0] != errno.EBUSY:
+                    return
 
 
 class ExistingChroot(rMakeChroot):
