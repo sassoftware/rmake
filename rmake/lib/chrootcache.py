@@ -198,7 +198,7 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
             if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
                 continue
             cached = ChrootManifest.read(os.path.join(self.cacheDir, name))
-            if not manifest:
+            if not cached:
                 continue
             score = manifest.score(cached)
             if score > bestScore:
