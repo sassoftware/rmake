@@ -160,7 +160,9 @@ class JobStore(object):
                 builtTroves.setdefault(troveId, []).append((
                         name, ThawVersion(version), ThawFlavor(flavor)))
             for troveId, binTroves in builtTroves.iteritems():
-                trovesById[troveId].setBuiltTroves(binTroves)
+                trv = trovesById.get(troveId)
+                if trv is not None:
+                    trv.setBuiltTroves(binTroves)
 
             cu.execute("""
                 SELECT troveId, key, value
@@ -174,7 +176,9 @@ class JobStore(object):
                 d.setdefault(key, []).append(value)
             for troveId, settings in troveSettings.items():
                 settingsClass = settings.pop('_class')[0]
-                trovesById[troveId].settings = thaw('TroveSettings',
+                trv = trovesById.get(troveId)
+                if trv is not None:
+                    trv.settings = thaw('TroveSettings',
                                                 (settingsClass, settings))
         else:
             results = cu.execute("""

@@ -1,0 +1,1 @@
+Fixed a race condition in getJobs() that could result in a JobNotFound error with a bogus ID.
