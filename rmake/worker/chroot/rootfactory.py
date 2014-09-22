@@ -634,6 +634,11 @@ class rMakeChroot(ConaryBasedChroot):
         return not removeFailed
 
     def _clean_busy(self, root):
+        """
+        Try multiple times to delete an empty chroot dir, which is busy due to
+        existing (namespaced) mounts. If that fails then move it out of the
+        way.
+        """
         try:
             os.rmdir(root)
             return
@@ -649,6 +654,23 @@ class rMakeChroot(ConaryBasedChroot):
             except OSError as err:
                 if err.args[0] != errno.EBUSY:
                     return
+        # If it can't be deleted (possibly due to a kernel refcount leak), then
+        # just move it out of the way.
+        n = 1
+        while True:
+            deadpath = '%s.__dead.%d' % (root, n)
+            if not os.path.exists(deadpath):
+                break
+            n += 1
+        try:
+            os.rename(root, deadpath)
+        except OSError as err:
+            self.logger.error(
+                    "Failed to move busy chroot %s out of the way: %s",
+                    root, str(err))
+        else:
+            self.logger.warning("Moved busy chroot %s out of the way",
+                    root)
 
 
 class ExistingChroot(rMakeChroot):

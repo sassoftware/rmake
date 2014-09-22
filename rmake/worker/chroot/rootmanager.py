@@ -53,6 +53,8 @@ class ChrootQueue(object):
         chroots = set(self.chroots)
         if os.path.exists(self.root):
             for name in os.listdir(self.root):
+                if '.__dead.' in name:
+                    continue
                 path = self.root + '/' + name
                 if os.path.isdir(path):
                     chroots.add(path)
@@ -72,6 +74,8 @@ class ChrootQueue(object):
         chroots = []
         if os.path.exists(self.root):
             for name in os.listdir(self.root):
+                if '.__dead.' in name:
+                    continue
                 path = self.root + '/' + name
                 if (not os.path.isdir(path)
                     or path in self.chroots
