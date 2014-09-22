@@ -604,15 +604,24 @@ class rMakeChroot(ConaryBasedChroot):
         # that's where the chroot process should have had all
         # of its files.  Doing this makes sure we don't remove
         # /bin/rm while it might still be needed the next time around.
-        os.system('rm -rf %s/tmp' % root)
+        p = subprocess.Popen(['/bin/rm', '-rf', root + '/tmp'], shell=False,
+                stderr=subprocess.PIPE)
+        _, stderr = p.communicate()
         removeFailed = False
         if os.path.exists(root + '/tmp'):
             removeFailed = True
         else:
-            os.system('rm -rf %s' % root)
+            p = subprocess.Popen(['/bin/rm', '-rf', root], shell=False,
+                    stderr=subprocess.PIPE)
+            _, stderr = p.communicate()
             self._clean_busy(root)
             if os.path.exists(root):
                 removeFailed = True
+        if removeFailed:
+            self.logger.error("failed to clean old chroot tree %s:\n%s", root,
+                    stderr)
+        else:
+            self.logger.debug("finished cleaning old chroot tree %s", root)
         if removeFailed and raiseError:
             raise errors.ServerError(
                 'Cannot create chroot - old root at %s could not be removed.'
