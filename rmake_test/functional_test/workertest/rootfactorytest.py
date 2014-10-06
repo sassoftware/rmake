@@ -228,6 +228,85 @@ class ChrootTest(rmakehelp.RmakeHelper):
         finally:
             chrootClient.stop()
 
+    def testChrootFactory2(self):
+        self.openRmakeRepository()
+        repos = self.openRepository()
+
+        self.addComponent('test1:source', '1.0', '',
+                          [('test1.recipe', test1Recipe )])
+        self.addComponent('test1:source', '2.0', '',
+                          [('test1.recipe', test1Recipe.replace('1.0', '2.0'))])
+
+        rootDir = self.rmakeCfg.getChrootDir() + '/testBuildReqs'
+        self.makeSourceTrove('testBuildReqs',
+             testBuildReqsRecipe % dict(rootDir=rootDir))
+
+        troveTup = repos.findTrove(self.cfg.buildLabel, 
+                                   ('testBuildReqs:source', None, None),
+                                   None)[0]
+        cookFlavor = deps.parseFlavor('readline,ssl,X')
+        troveTup = (troveTup[0], troveTup[1], cookFlavor)
+
+        db = self.openRmakeDatabase()
+        job = self.newJob(troveTup)
+        buildTrove = buildtrove.BuildTrove(job.jobId, *troveTup)
+        buildTrove.setPublisher(job.getPublisher())
+
+        cfg = buildcfg.BuildConfiguration(False, conaryConfig=self.cfg,
+                                          root=self.cfg.root, 
+                                          serverConfig=self.rmakeCfg)
+        cfg.defaultBuildReqs = []
+
+        trv1 = self.addComponent('test1:runtime', '1.0', '',
+                                 [('/usr/bin/test1',
+                                  rephelp.RegularFile(contents='#!/bin/sh', perms=0755))])
+        trv2 = self.addCollection('test1', '1.0', [':runtime'])
+        trv3 = self.addComponent('test2:runtime', '1.0', '',
+                                 [('/usr/bin/test2',
+                                   rephelp.RegularFile(contents='#!/bin/sh', perms=0755))])
+        trv4 = self.addComponent('testunreadable:runtime', '1.0', '',
+            [('/usr/untraverseable',
+              rephelp.Directory(perms=0700)),
+             ('/usr/symlink',
+              rephelp.Symlink(target='/usr/untraverseable')),
+             ('/usr/untraverseable/unreadable',
+              rephelp.RegularFile(perms=0600))])
+
+        self.rmakeCfg.chrootUser = 'bob'
+        mgr = rootmanager.ChrootManager(self.rmakeCfg)
+        jobList = [ (x[0], (None, None), (x[1], x[2]), False) for x in 
+                    (trv1.getNameVersionFlavor(), trv2.getNameVersionFlavor(),
+                     trv3.getNameVersionFlavor(), trv4.getNameVersionFlavor())]
+
+        logFile = logfile.LogFile(self.workDir + '/chrootlog')
+        logFile.redirectOutput()
+        factory = mgr.getRootFactory(cfg, jobList, [], [], buildTrove)
+        factory.create()
+        chrootClient = factory.start()
+        try:
+            logPath = chrootClient.buildTrove(cfg,
+                                              cfg.getTargetLabel(troveTup[1]),
+                                              *troveTup)
+            result = chrootClient.checkResults(wait=20, *troveTup)
+            logFile.restoreOutput()
+            assert(result)
+            assert result.isBuildSuccess(), repr(result.getFailureReason())
+            untraverseable = mgr.baseDir + '/testBuildReqs/usr/untraverseable'
+            self.assertEquals(stat.S_IMODE(os.stat(untraverseable).st_mode), 0705)
+            unreadable = untraverseable + '/unreadable'
+            self.assertEquals(stat.S_IMODE(os.stat(unreadable).st_mode), 0604)
+            cs = changeset.ChangeSetFromFile(result.getChangeSetFile())
+            trvCs = [ x for x in cs.iterNewTroveList()
+                     if x.getName() == 'testBuildReqs:runtime'][0]
+            trv = trove.Trove(trvCs)
+            files = [ x[1] for x in trv.iterFileList()]
+            # make sure the loadInstalled picked the recipe that 
+            # matches the installed package.
+            assert('/foo/1.0' in files)
+        finally:
+            chrootClient.stop()
+
+
     def testPerlReqs(self):
         self.openRmakeRepository()
         repos = self.openRepository()

@@ -96,6 +96,7 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
     chrootExtraMounts = CfgList(CfgString)
     hostName          = (CfgString, 'localhost')
     verbose           = False
+    chrootUser        = (CfgString, constants.chrootUser)
 
     def getCommandSocketDir(self):
         return self.buildDir + '/tmp/'

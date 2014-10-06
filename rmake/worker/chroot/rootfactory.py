@@ -516,11 +516,17 @@ class rMakeChroot(ConaryBasedChroot):
         """
         passwd = open(os.path.join(self.cfg.root, 'etc/passwd'), 'a')
         group = open(os.path.join(self.cfg.root, 'etc/group'), 'a')
-        for name in (constants.rmakeUser, constants.chrootUser):
+
+        nameMap = {
+            constants.rmakeUser: constants.rmakeUser,
+            constants.chrootUser: self.serverCfg.chrootUser,
+        }
+
+        for name, root_name in nameMap.iteritems():
             pwdata = pwd.getpwnam(name)
-            print >> passwd, ":".join(str(x) for x in pwdata)
+            print >> passwd, ":".join(str(x) == name and root_name or str(x) for x in pwdata)
             grpdata = grp.getgrgid(pwdata.pw_gid)
-            print >> group, ":".join(str(x) for x in grpdata)
+            print >> group, ":".join(str(x) == name and root_name or str(x) for x in grpdata)
 
     def canChroot(self):
         return (pwd.getpwnam(constants.rmakeUser).pw_uid == os.getuid())
