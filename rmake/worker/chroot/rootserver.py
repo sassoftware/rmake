@@ -387,8 +387,7 @@ class ChrootConfig(daemon.DaemonConfig):
 
     def __init__(self, readConfigFiles=False, ignoreErrors=False):
         daemon.DaemonConfig.__init__(self)
-        self.lockDir = self.lockDir + '.%s' % os.getpid()
-        self.logDir = self.logDir + '.%s' % os.getpid()
+
 
 class StartCommand(daemon.StartCommand):
 
@@ -406,9 +405,10 @@ class ChrootDaemon(daemon.Daemon):
         self._registerCommand(StartCommand)
 
     def runCommand(self, thisCommand, cfg, *args, **kw):
+        basename = os.path.basename(cfg.socketPath)
         cfg.socketPath = cfg.root + cfg.socketPath
-        cfg.logDir = cfg.root + cfg.logDir
-        cfg.lockDir = cfg.root + cfg.lockDir
+        cfg.logDir = '%s%s.%s' % (cfg.root, cfg.logDir, basename)
+        cfg.lockDir = '%s%s.%s' % (cfg.root, cfg.lockDir, basename)
         util.removeIfExists(cfg.socketPath)
         util.mkdirChain(os.path.dirname(cfg.socketPath))
         util.mkdirChain(cfg.lockDir)
