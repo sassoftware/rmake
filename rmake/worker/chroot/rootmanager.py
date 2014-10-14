@@ -24,6 +24,7 @@ import time
 import traceback
 
 #conary
+from conary.errors import ConaryError
 from conary.lib import util
 from conary.local import database
 
@@ -129,17 +130,22 @@ class ChrootQueue(object):
             If goodRootsOnly is True, be more discerning about which chroot
             to use - only use ones that have more than half matching packages.
         """
+        old = self.listOldChroots()
+        if not old:
+            return None
         if not reuseRoot:
-            for chroot in self.listOldChroots():
-                # return oldest directory
-                return sorted(self.listOldChroots(),
-                              key=lambda x: os.stat(x)[stat.ST_MTIME])[0]
+            # return oldest directory
+            return sorted(old, key=lambda x: os.stat(x)[stat.ST_MTIME])[0]
         buildReqsByNLF = set([(x[0], x[1].trailingLabel(), x[2]) 
                              for x in buildReqs])
         matches = {}
-        for chrootPath in self.listOldChroots():
-            db = database.Database(chrootPath, '/var/lib/conarydb')
-            chrootContents = db.iterAllTroves()
+        for chrootPath in old:
+            try:
+                db = database.Database(chrootPath, '/var/lib/conarydb')
+                chrootContents = db.iterAllTroves()
+            except ConaryError:
+                # possible database corruption, etc.
+                continue
             trovesByNLF = set([(x[0], x[1].trailingLabel(), x[2]) for x in chrootContents])
             # matches = 2*matches - extras - so an empty chroot is better than 
             # a chroot with lots of wrong troves.
