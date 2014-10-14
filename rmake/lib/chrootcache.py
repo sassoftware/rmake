@@ -19,12 +19,11 @@
 Cache of chroots.
 """
 
-import errno
-import fcntl
 import os
 import subprocess
 import tempfile
 import time
+from rmake.lib import locking
 from rmake.worker.chroot.rootmanifest import ChrootManifest
 
 from conary.lib import util
@@ -229,35 +228,29 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
 
     def store(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
-        lock = open(path + '.lock', 'w+')
+        lock = locking.LockFile(path + '.lock')
+        if not lock.acquire(wait=False):
+            # Busy, just do nothing
+            return
         try:
-            fcntl.lockf(lock.fileno(), fcntl.LOCK_NB | fcntl.LOCK_EX)
-        except IOError, err:
-            if err.errno != errno.EAGAIN:
-                raise
-            # Conflict, just do nothing
-            return
-        if util.statFile(lock, True, True
-                ) != util.statFile(lock.name, True, True):
-            # Locked an unlinked file
-            return
-        if not os.path.exists(path):
-            self._copy(root, path)
-        os.unlink(lock.name)
-        lock.close()
+            if not os.path.exists(path):
+                self._copy(root, path)
+        finally:
+            lock.release()
 
     def restore(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
         if os.path.isdir(root):
             self._remove(root)
-        with util.AtomicFile(os.path.join(path, '.used')):
-            pass
-        self._copy(path, root)
-        util.removeIfExists(os.path.join(root, '.used'))
+        with locking.LockFile(path + '.lock', share=True):
+            open(os.path.join(path, '.used'), 'w').close()
+            self._copy(path, root)
+            util.removeIfExists(os.path.join(root, '.used'))
 
     def remove(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
-        self._remove(path)
+        with locking.LockFile(path + '.lock'):
+            self._remove(path)
 
     def hasChroot(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
@@ -317,8 +310,11 @@ class HardlinkChrootCache(DirBasedChrootCacheInterface):
         # -T -- never copy source as a subdir of dest if dest already exists
         # -a -- archive i.e. recurse and don't follow symlinks
         # -l -- hardlink files instead of copying
-        self._call(['/bin/cp', '-Tal', source, dest])
+        tmpdest = '%s.tmp%d' % (dest, os.getpid())
+        self._call(['/bin/cp', '-Tal', source, tmpdest])
+        os.rename(tmpdest, dest)
 
     def _remove(self, path):
-        os.rename(path, path + '.dead')
-        self._call(['/bin/rm', '-rf', path + '.dead'])
+        tmpdest = '%s.tmp%d' % (path, os.getpid())
+        os.rename(path, tmpdest)
+        self._call(['/bin/rm', '-rf', tmpdest])
