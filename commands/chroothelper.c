@@ -1032,11 +1032,14 @@ enter_chroot_unshare(void) {
     if (mount(chrootDir, chrootDir, "bind", MS_PRIVATE, NULL)) {
         perror("mount");
         fprintf(stderr, "ERROR: failed to mark private bindmount #1 for chroot\n");
+        umount(chrootDir); /* unwind other mounts on error */
         return 1;
     }
     if (mount(chrootDir, chrootDir, "bind", MS_BIND, NULL)) {
         perror("mount");
         fprintf(stderr, "ERROR: failed to create private bindmount #2 for chroot\n");
+        umount(chrootDir); /* unwind other mounts on error */
+        umount(chrootDir);
         return 1;
     }
 
