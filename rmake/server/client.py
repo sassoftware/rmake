@@ -359,7 +359,7 @@ class EventReceiver(nodeclient.NodeClient):
 
     def serve_forever(self):
         try:
-            while True:
+            while not self._halt:
                 self.handleRequestIfReady(0.01)
                 self._serveLoopHook()
                 if self.listener._shouldExit():

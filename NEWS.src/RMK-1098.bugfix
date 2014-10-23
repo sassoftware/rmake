@@ -1,0 +1,1 @@
+Fixed "rmake watch" spamming ECONNREFUSED errors and never exiting if the rMake server shuts down.
