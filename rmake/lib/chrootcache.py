@@ -106,7 +106,19 @@ class ChrootCacheInterface(object):
         Returns the fingerprint of the partial match that is closest to
         C{manifest} without any extra troves.
         """
-        return None
+        bestScore = -1
+        bestFingerprint = None
+        for name in os.listdir(self.cacheDir):
+            if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
+                continue
+            cached = ChrootManifest.read(os.path.join(self.cacheDir, name))
+            if not cached:
+                continue
+            score = manifest.score(cached)
+            if score > bestScore:
+                bestScore = score
+                bestFingerprint = sha1FromString(name[:40])
+        return bestFingerprint
 
     def findOld(self, hours):
         """
@@ -121,8 +133,10 @@ class LocalChrootCache(ChrootCacheInterface):
     The LocalChrootCache class implements a chroot cache that uses the
     local file system to store tar archive of chroots.
     """
-    suffix = '.tar.gz'
 
+    suffix = '.tar.gz'
+    compress = 'gzip -1 -'
+    decompress = 'zcat'
 
     def __init__(self, cacheDir):
         """
@@ -139,19 +153,21 @@ class LocalChrootCache(ChrootCacheInterface):
         fd, fn = tempfile.mkstemp(self.suffix, prefix, self.cacheDir)
         os.close(fd)
         try:
-            subprocess.call('tar cSpf - -C %s . | gzip -1 - > %s' %(root, fn),
-                            shell=True)
+            subprocess.call('tar -cC %s . | %s > %s' % (root, self.compress,
+                fn), shell=True)
             os.rename(fn, path)
         finally:
             util.removeIfExists(fn)
+        ChrootManifest.store(root, path)
 
     def restore(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
-        subprocess.call('zcat %s | tar xSpf - -C %s' %(path, root),
-                        shell=True)
+        subprocess.call('%s %s | tar -xmC %s' % (self.decompress, path,
+            root), shell=True)
 
     def remove(self, chrootFingerprint):
         path = self._fingerPrintToPath(chrootFingerprint)
+        util.removeIfExists(path + ChrootManifest.AR_SUFFIX)
         util.removeIfExists(path)
 
     def hasChroot(self, chrootFingerprint):
@@ -177,6 +193,12 @@ class LocalChrootCache(ChrootCacheInterface):
         return old
 
 
+class LzopChrootCache(LocalChrootCache):
+    suffix = '.tar.lzo'
+    compress = 'lzop -c'
+    decompress = 'lzop -dc'
+
+
 class DirBasedChrootCacheInterface(ChrootCacheInterface):
     """
     Base class for chroot caches that look like a directory on disk.
@@ -189,21 +211,6 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
     def _fingerPrintToPath(self, chrootFingerprint):
         basename = sha1ToString(chrootFingerprint) + self.suffix
         return os.path.join(self.cacheDir, basename)
-
-    def findPartialMatch(self, manifest):
-        bestScore = -1
-        bestFingerprint = None
-        for name in os.listdir(self.cacheDir):
-            if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
-                continue
-            cached = ChrootManifest.read(os.path.join(self.cacheDir, name))
-            if not cached:
-                continue
-            score = manifest.score(cached)
-            if score > bestScore:
-                bestScore = score
-                bestFingerprint = sha1FromString(name[:40])
-        return bestFingerprint
 
     def findOld(self, hours):
         thresh = time.time() - 3600 * hours

@@ -22,6 +22,9 @@ from conary.lib import util
 
 class ChrootManifest(object):
 
+    FILENAME = 'rmake.manifest'
+    AR_SUFFIX = '.manifest'
+
     def __init__(self, jobFingerprints, bootstrapFingerprints,
             crossFingerprints, rpmRequirements):
         self.jobFingerprints = set(jobFingerprints)
@@ -30,15 +33,29 @@ class ChrootManifest(object):
         self.rpmRequirements = set(rpmRequirements)
 
     @classmethod
-    def read(cls, root):
+    def read(cls, root_or_path):
+        if os.path.isdir(root_or_path):
+            path = os.path.join(root_or_path, cls.FILENAME)
+        else:
+            path = root_or_path + cls.AR_SUFFIX
         try:
-            return cPickle.load(open(os.path.join(root, 'rmake.manifest')))
+            return cPickle.load(open(path))
         except:
             return None
 
     def write(self, root):
-        with util.AtomicFile(os.path.join(root, 'rmake.manifest')) as fobj:
+        with util.AtomicFile(os.path.join(root, self.FILENAME)) as fobj:
             cPickle.dump(self, fobj)
+
+    @classmethod
+    def store(cls, root, archive):
+        """
+        Copy a manifest from inside a chroot to adjacent to a file archive
+        """
+        f_in = open(os.path.join(root, cls.FILENAME))
+        with util.AtomicFile(archive + cls.AR_SUFFIX) as f_out:
+            util.copyfileobj(f_in, f_out)
+        f_in.close()
 
     def score(self, cached):
         if self.bootstrapFingerprints != cached.bootstrapFingerprints:
