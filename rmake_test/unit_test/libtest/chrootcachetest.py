@@ -14,16 +14,16 @@
 # limitations under the License.
 #
 
-
 from testutils import mock
 
 from rmake_test import rmakehelp
 from rmake.lib import chrootcache
+from rmake.worker.chroot.rootmanifest import ChrootManifest
 from conary.lib import util
 import subprocess
-import re
 import os
 import tempfile
+
 
 class LocalChrootCacheTest(rmakehelp.RmakeHelper):
     def setUp(self):
@@ -37,7 +37,7 @@ class LocalChrootCacheTest(rmakehelp.RmakeHelper):
 
     def testStore(self):
         def call(*args, **kw):
-            expected = 'tar cSpf - -C /some/dir . | gzip -1 - > %s/6861736868617368686173686861736868617368.ABC123.tar.gz' %self.cacheDir
+            expected = 'tar -cC /some/dir . | gzip -1 - > %s/6861736868617368686173686861736868617368.ABC123.tar.gz' %self.cacheDir
             self.failUnlessEqual(args, (expected,))
             self.failUnless(kw == dict(shell=True))
 
@@ -54,11 +54,13 @@ class LocalChrootCacheTest(rmakehelp.RmakeHelper):
         mock.replaceFunctionOnce(util, 'mkdirChain', self._mkdirChain)
         mock.replaceFunctionOnce(tempfile, 'mkstemp', mkstemp)
         mock.replaceFunctionOnce(os, 'rename', rename)
+        mock.mock(ChrootManifest, 'store')
         self.chrootCache.store('hash' * 5, '/some/dir')
+        ChrootManifest.store._mock.assertCalled('/some/dir', '%s/6861736868617368686173686861736868617368.tar.gz' % self.cacheDir)
 
     def testRestore(self):
         def call(*args, **kw):
-            expected = 'zcat %s/6861736868617368686173686861736868617368.tar.gz | tar xSpf - -C /some/dir' %self.cacheDir
+            expected = 'zcat %s/6861736868617368686173686861736868617368.tar.gz | tar -xmC /some/dir' %self.cacheDir
             self.failUnlessEqual(args, (expected,))
             self.failUnless(kw == dict(shell=True))
 

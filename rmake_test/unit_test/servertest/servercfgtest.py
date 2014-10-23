@@ -76,7 +76,6 @@ class rMakeBuilderConfigurationTest(rmakehelp.RmakeHelper):
         except Exception, e:
             self.failUnless(isinstance(e, errors.RmakeError))
             self.failUnlessEqual(str(e), 'unknown chroot cache type of "unknown" specified')
-        self.failUnlessEqual(c._getChrootCacheDir(), None)
 
     def testLocalRepoMap(self):
         """
