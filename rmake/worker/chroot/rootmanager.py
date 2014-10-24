@@ -197,6 +197,8 @@ class ChrootManager(object):
         self.chrootCache = serverCfg.getChrootCache()
         if logger is None:
             logger = logger_.Logger()
+        if self.chrootCache:
+            self.chrootCache.setLogger(logger)
         self.logger = logger
         self.queue = ChrootQueue(self.baseDir, self.serverCfg.chrootLimit)
 

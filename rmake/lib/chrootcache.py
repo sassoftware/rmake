@@ -98,6 +98,13 @@ class ChrootCacheInterface(object):
         """
         return False
 
+    def listCached(self):
+        """
+        Return a list of tuples (fingerprint, atime, size) of all chroots in
+        the cache.
+        """
+        raise NotImplementedError
+
     def findPartialMatch(self, manifest):
         """
         Scan through existing cached chroots for one with a subset of the
@@ -125,7 +132,12 @@ class ChrootCacheInterface(object):
         List all chroots that haven't been used in more than the specified
         interval.
         """
-        raise NotImplementedError
+        thresh = time.time() - 3600 * hours
+        return [fingerprint for (fingerprint, atime, size) in self.listCached()
+                if atime < thresh]
+
+    def setLogger(self, logger):
+        self.logger = logger
 
 
 class LocalChrootCache(ChrootCacheInterface):
@@ -138,13 +150,19 @@ class LocalChrootCache(ChrootCacheInterface):
     compress = 'gzip -1 -'
     decompress = 'zcat'
 
-    def __init__(self, cacheDir):
+    def __init__(self, cacheDir, sizeLimit=None, chrootHelperPath=None):
         """
         Instanciate a LocalChrootCache object
         @param cacheDir: The base directory for the chroot cache files
         @type cacheDir: str
         """
         self.cacheDir = cacheDir
+        try:
+            self.sizeLimit = parseSize(sizeLimit or '0')
+        except ValueError:
+            raise ValueError("Invalid chrootcache size limit %r. Must be an "
+                    "integer number of mebibytes, or an integer suffixed by "
+                    "K, M, G, or T." % (sizeLimit,))
 
     def store(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
@@ -159,6 +177,7 @@ class LocalChrootCache(ChrootCacheInterface):
         finally:
             util.removeIfExists(fn)
         ChrootManifest.store(root, path)
+        self.prune()
 
     def restore(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
@@ -178,19 +197,31 @@ class LocalChrootCache(ChrootCacheInterface):
         tar = sha1ToString(chrootFingerprint) + self.suffix
         return os.path.join(self.cacheDir, tar)
 
-    def findOld(self, hours):
-        thresh = time.time() - 3600 * hours
-        old = []
+    def listCached(self):
+        items = []
         for name in os.listdir(self.cacheDir):
-            if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
+            if len(name) != (40 + len(self.suffix)
+                    ) or not name.endswith(self.suffix):
                 continue
             fingerprint = sha1FromString(name[:40])
             st = util.lstat(os.path.join(self.cacheDir, name))
             if st:
-                atime = st.st_mtime
-                if atime < thresh:
-                    old.append(fingerprint)
-        return old
+                items.append((fingerprint, st.st_atime, st.st_size))
+        return items
+
+    def prune(self):
+        if not self.sizeLimit:
+            return
+        cached = self.listCached()
+        cached.sort(key=lambda x: x[2])
+        total = sum(x[2] for x in cached)
+        for fingerprint, atime, size in cached:
+            if total < self.sizeLimit:
+                break
+            self.logger.info("Deleting cached chroot %s to meet size limit",
+                    sha1ToString(fingerprint))
+            self.remove(fingerprint)
+            total -= size
 
 
 class LzopChrootCache(LocalChrootCache):
@@ -205,16 +236,17 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
     """
     suffix = ''
 
-    def __init__(self, cacheDir):
+    def __init__(self, cacheDir, sizeLimit=None, chrootHelperPath=None):
+        if sizeLimit:
+            raise RuntimeError("This chrootcache type does not support size limits")
         self.cacheDir = cacheDir
 
     def _fingerPrintToPath(self, chrootFingerprint):
         basename = sha1ToString(chrootFingerprint) + self.suffix
         return os.path.join(self.cacheDir, basename)
 
-    def findOld(self, hours):
-        thresh = time.time() - 3600 * hours
-        old = []
+    def listCached(self):
+        items = []
         for name in os.listdir(self.cacheDir):
             if len(name) != (40 + len(self.suffix)) or not name.endswith(self.suffix):
                 continue
@@ -229,9 +261,9 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
                 else:
                     # Disappeared
                     continue
-            if atime < thresh:
-                old.append(fingerprint)
-        return old
+            size = 0
+            items.append((fingerprint, atime, size))
+        return items
 
     def store(self, chrootFingerprint, root):
         path = self._fingerPrintToPath(chrootFingerprint)
@@ -285,8 +317,8 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
 class BtrfsChrootCache(DirBasedChrootCacheInterface):
     suffix = '.btrfs'
 
-    def __init__(self, cacheDir, chrootHelperPath):
-        super(BtrfsChrootCache, self).__init__(cacheDir)
+    def __init__(self, cacheDir, sizeLimit=None, chrootHelperPath=None):
+        super(BtrfsChrootCache, self).__init__(cacheDir, sizeLimit)
         self.chrootHelperPath = chrootHelperPath
 
     def createRoot(self, root):
@@ -325,3 +357,29 @@ class HardlinkChrootCache(DirBasedChrootCacheInterface):
         tmpdest = '%s.tmp%d' % (path, os.getpid())
         os.rename(path, tmpdest)
         self._call(['/bin/rm', '-rf', tmpdest])
+
+
+CACHE_TYPES = {
+        'btrfs': BtrfsChrootCache,
+        'hardlink': HardlinkChrootCache,
+        'local': LocalChrootCache,
+        'lzop': LzopChrootCache,
+        }
+
+
+def parseSize(val):
+    if isinstance(val, (int, long)):
+        return val
+    val = val.upper()
+    if val.endswith('K'):
+        return int(val[:-1]) * 1024
+    elif val.endswith('M'):
+        return int(val[:-1]) * 1024 * 1024
+    elif val.endswith('G'):
+        return int(val[:-1]) * 1024 * 1024 * 1024
+    elif val.endswith('T'):
+        return int(val[:-1]) * 1024 * 1024 * 1024 * 1024
+    elif not val:
+        return 0
+    else:
+        return int(val) * 1024 * 1024

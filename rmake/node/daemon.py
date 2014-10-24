@@ -79,7 +79,6 @@ class CleanCacheCommand(daemon.DaemonCommand):
         hours = int(args[0])
         cache = cfg.getChrootCache()
         if not cache:
-            print 'No chroot cache configured'
             return 0
         for fingerprint in cache.findOld(hours):
             if argSet.get('test'):

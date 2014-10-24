@@ -45,12 +45,12 @@ from rmake.lib import procutil
 class CfgChrootCache(cfg.CfgType):
     def parseString(self, str):
         s = str.split()
-        if len(s) != 2:
+        if len(s) < 2 or len(s) > 3:
             raise ParseError("chroot cache type and path expected")
         return tuple(s)
 
     def format(self, val, displayOptions = None):
-        return "%s %s" % val
+        return ' '.join(str(x) for x in val)
 
 
 class CfgPortRange(cfg.CfgType):
@@ -127,17 +127,17 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
     def getChrootCache(self):
         if not self.chrootCache:
             return None
-        elif self.chrootCache[0] == 'local':
-            return chrootcache.LocalChrootCache(self.chrootCache[1])
-        elif self.chrootCache[0] == 'lzop':
-            return chrootcache.LzopChrootCache(self.chrootCache[1])
-        elif self.chrootCache[0] == 'hardlink':
-            return chrootcache.HardlinkChrootCache(self.chrootCache[1])
-        elif self.chrootCache[0] == 'btrfs':
-            return chrootcache.BtrfsChrootCache(self.chrootCache[1],
-                    self.getChrootHelper())
+        cls = chrootcache.CACHE_TYPES.get(self.chrootCache[0])
+        if not cls:
+            raise errors.RmakeError("Unknown chroot cache type of '%s' "
+                    "specified. Valid types are: "
+                    + " ".join(chrootcache.CACHE_TYPES))
+        cacheDir = self.chrootCache[1]
+        if len(self.chrootCache) > 2:
+            sizeLimit = self.chrootCache[2]
         else:
-            raise errors.RmakeError('unknown chroot cache type of "%s" specified' %self.chrootCache[0])
+            sizeLimit = None
+        return cls(cacheDir, sizeLimit, self.getChrootHelper())
 
     def _getChrootCacheDir(self):
         if not self.chrootCache:
