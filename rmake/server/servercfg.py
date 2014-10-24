@@ -130,7 +130,7 @@ class rMakeBuilderConfiguration(daemon.DaemonConfig):
         cls = chrootcache.CACHE_TYPES.get(self.chrootCache[0])
         if not cls:
             raise errors.RmakeError("Unknown chroot cache type of '%s' "
-                    "specified. Valid types are: "
+                    "specified. Valid types are: " % (self.chrootCache[0],)
                     + " ".join(chrootcache.CACHE_TYPES))
         cacheDir = self.chrootCache[1]
         if len(self.chrootCache) > 2:

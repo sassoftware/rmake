@@ -31,7 +31,7 @@ class CfgChrootCacheTest(rmakehelp.RmakeHelper):
         self.failUnlessEqual(c.parseString('local /path/to/cache'),
                              ('local', '/path/to/cache'))
         self.failUnlessRaises(cfgtypes.ParseError, c.parseString, 'foo')
-        self.failUnlessRaises(cfgtypes.ParseError, c.parseString, 'foo bar baz')
+        self.failUnlessRaises(cfgtypes.ParseError, c.parseString, 'foo bar baz bork')
 
         self.failUnlessEqual(c.format(('local', '/path/to/cache')),
                              'local /path/to/cache')
@@ -75,7 +75,9 @@ class rMakeBuilderConfigurationTest(rmakehelp.RmakeHelper):
             self.fail('exception expected was not raised')
         except Exception, e:
             self.failUnless(isinstance(e, errors.RmakeError))
-            self.failUnlessEqual(str(e), 'unknown chroot cache type of "unknown" specified')
+            start = "Unknown chroot cache type of 'unknown' specified. Valid types are:"
+            if not str(e).startswith(start):
+                self.fail("%r should start with %r" % (str(e), start))
 
     def testLocalRepoMap(self):
         """
