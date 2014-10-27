@@ -349,7 +349,8 @@ and check the log file at %s for detailed diagnostics.
 
     def _connectDatabase(self):
         self.db = database.Database(self.cfg.getDbPath(),
-                self.cfg.getDbContentsPath())
+                self.cfg.getDbContentsPath(),
+                memCache=self.cfg.memCache)
         self._subscribers.append(build_subscriber._JobDbLogger(self.db))
 
     def _connectBus(self):
@@ -390,7 +391,6 @@ and check the log file at %s for detailed diagnostics.
 
     def _postStartupTasks(self):
         """Normalize the state of things on startup"""
-        self.db.auth.resetCache()
         self.db.deactivateAllNodes()
         while True:
             job = self.db.popJobFromQueue()

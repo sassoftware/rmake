@@ -14,18 +14,38 @@
 # limitations under the License.
 #
 
-
+import hashlib
+import hmac
+import os
 import time
 
-from conary.lib import sha1helper
 from conary.dbstore.sqlerrors import DatabaseLocked, ColumnNotUnique
 
 
 CACHE_TIMEOUT = 15 * 60 # timeout after 15 mins
 
-class AuthenticationCache(object):
+class BaseAuthenticationCache(object):
+
+    def __init__(self):
+        self.key = os.urandom(20)
+
+    def _makeSessionId(self, authItemList):
+        blob = '\0'.join([str(x) for x in authItemList])
+        return hmac.new(self.key, blob, hashlib.sha1).hexdigest()
+
+    def cache(self, authItemList):
+        pass
+
+    def checkCache(self, authItemList):
+        return False
+
+
+class AuthenticationCache(BaseAuthenticationCache):
+
     def __init__(self, db):
         self.db = db
+        self.lastPurge = 0
+        BaseAuthenticationCache.__init__(self)
 
     def cache(self, authItemList):
         sessionId =  self._makeSessionId(authItemList)
@@ -50,15 +70,11 @@ class AuthenticationCache(object):
         self.db.commit()
 
     def _deleteOld(self, cu):
+        now = time.time()
+        if now - self.lastPurge < 5:
+            return
         cu.execute('DELETE FROM AuthCache WHERE timeStamp < ?', time.time())
-
-    def resetCache(self):
-        cu = self.db.cursor()
-        cu.execute('DELETE FROM AuthCache')
-        self.db.commit()
-
-    def _makeSessionId(self, authItemList):
-        return sha1helper.sha1String('\0'.join([str(x) for x in authItemList]))
+        self.lastPurge = now
 
     def checkCache(self, authItemList):
         cu = self.db.cursor()
@@ -73,3 +89,30 @@ class AuthenticationCache(object):
                     time.time() + CACHE_TIMEOUT, cu.binary(sessionId))
         self.db.commit()
         return match
+
+
+class AuthenticationMemcache(BaseAuthenticationCache):
+
+    def __init__(self, memCache, memCachePrefix=''):
+        self.memCache = memCache
+        self.memCachePrefix = memCachePrefix
+        BaseAuthenticationCache.__init__(self)
+
+    def _cache(self, sessionId):
+        self.memCache.set(self.memCachePrefix + sessionId,
+                str(time.time()), CACHE_TIMEOUT)
+
+    def cache(self, authItemList):
+        sessionId = self._makeSessionId(authItemList)
+        self._cache(sessionId)
+        print 'SAVE', authItemList
+
+    def checkCache(self, authItemList):
+        sessionId = self._makeSessionId(authItemList)
+        if self.memCache.get(self.memCachePrefix + sessionId):
+            self._cache(sessionId)
+            print 'HIT', authItemList
+            return True
+        else:
+            print 'MISS', authItemList
+            return False

@@ -204,6 +204,7 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
     # if "LOCAL", don't start one but still use localhost
     messageBusHost  = (CfgString, None)
     messageBusPort  = (CfgInt, 50900)
+    memCache        = CfgString
     # DEPRECATED
     caCertPath        = None
 

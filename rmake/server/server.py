@@ -346,7 +346,8 @@ class rMakeServer(apirpc.XMLApiServer):
         self.cfg = cfg
         apirpc.XMLApiServer.__init__(self, uri=None, logger=serverLogger)
 
-        self.db = database.Database(cfg.getDbPath(), cfg.getDbContentsPath())
+        self.db = database.Database(cfg.getDbPath(), cfg.getDbContentsPath(),
+                memCache=cfg.memCache)
         self.auth = auth.AuthenticationManager(cfg.getAuthUrl(), self.db)
         self.nodeClient = mn_subscriber.RPCNodeClient(self.cfg, self)
 

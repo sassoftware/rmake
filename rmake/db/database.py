@@ -88,7 +88,7 @@ class DBInterface(object):
 
 class Database(DBInterface):
 
-    def __init__(self, path, contentsPath, clean = False):
+    def __init__(self, path, contentsPath, clean = False, memCache=None):
         self.driver, self.dbpath = path
 
         if os.path.exists(self.dbpath) and clean:
@@ -97,7 +97,12 @@ class Database(DBInterface):
         db = self.open()
         DBInterface.__init__(self, db)
 
-        self.auth = authcache.AuthenticationCache(self)
+        if memCache:
+            import memcache
+            memCache = memcache.Client([memCache])
+            self.auth = authcache.AuthenticationMemcache(memCache)
+        else:
+            self.auth = authcache.AuthenticationCache(self)
         self.jobStore = jobstore.JobStore(self)
         self.logStore = logstore.LogStore(contentsPath + '/logs')
         self.jobQueue = jobstore.JobQueue(self)
