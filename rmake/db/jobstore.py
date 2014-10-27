@@ -98,7 +98,7 @@ class JobStore(object):
                 raise KeyError, jobId
 
             failureReason = thaw('FailureReason',
-                                 (failureReason, failureData))
+                    (failureReason, cu.frombinary(failureData)))
             job = buildjob.BuildJob(jobId, status=status, state=state,
                                     start=float(start),
                                     finish=float(finish),
@@ -131,7 +131,7 @@ class JobStore(object):
                 version = versions.ThawVersion(version)
                 flavor = ThawFlavor(flavor)
                 failureReason = thaw('FailureReason',
-                                     (failureReason, failureData))
+                        (failureReason, cu.frombinary(failureData)))
                 troveClass = buildtrove.getClassForTroveType(troveType)
                 buildTrove = troveClass(jobId, name, version,
                                         flavor,
@@ -273,7 +273,7 @@ class JobStore(object):
             if chrootPath is None:
                 chrootPath = chrootHost = ''
             failureReason = thaw('FailureReason',
-                                 (failureReason, failureData))
+                    (failureReason, cu.frombinary(failureData)))
 
             troveClass = buildtrove.getClassForTroveType(troveType)
             buildTrove = troveClass(jobId, troveName, version,
