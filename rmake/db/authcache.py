@@ -105,14 +105,11 @@ class AuthenticationMemcache(BaseAuthenticationCache):
     def cache(self, authItemList):
         sessionId = self._makeSessionId(authItemList)
         self._cache(sessionId)
-        print 'SAVE', authItemList
 
     def checkCache(self, authItemList):
         sessionId = self._makeSessionId(authItemList)
         if self.memCache.get(self.memCachePrefix + sessionId):
             self._cache(sessionId)
-            print 'HIT', authItemList
             return True
         else:
-            print 'MISS', authItemList
             return False
