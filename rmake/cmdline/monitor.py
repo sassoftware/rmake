@@ -156,6 +156,7 @@ class JobLogDisplay(_AbstractDisplay):
             showBuildLogs=showBuildLogs,
             exitOnFinish=exitOnFinish)
         self.buildingTroves = {}
+        self.lastLogPoll = 0
 
     def _tailBuildLog(self, jobId, troveTuple):
         mark = self.buildingTroves.get((jobId, troveTuple), [0])[0]
@@ -169,6 +170,10 @@ class JobLogDisplay(_AbstractDisplay):
     def _serveLoopHook(self):
         if not self.buildingTroves:
             return
+        now = time.time()
+        if now - self.lastLogPoll < 1:
+            return
+        self.lastLogPoll = now
         for (jobId, troveTuple), (mark, tail) in self.buildingTroves.items():
             if not tail:
                 continue
