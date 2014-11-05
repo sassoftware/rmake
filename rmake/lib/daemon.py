@@ -84,6 +84,15 @@ class StopCommand(DaemonCommand):
         return daemon.kill()
 _register(StopCommand)
 
+class ReloadCommand(DaemonCommand):
+    commands = ['reload']
+
+    help = 'Reload the service configuration'
+
+    def runCommand(self, daemon, cfg, argSet, args):
+        return daemon.sendReload()
+# Reload is not supported by all daemons so don't register it yet
+
 class StartCommand(DaemonCommand):
     commands = ['start']
 
@@ -195,6 +204,13 @@ class Daemon(options.MainHandler):
             #Do we really want to remove the PID?  Shouldn't we
             #let the daemon process do it?
             self.removeLockFile()
+
+    def sendReload(self):
+        pid = self.getPidFromLockFile(warnOnError=True)
+        if not pid:
+            self.error("could not reload %s: no pid found." % self.name)
+            sys.exit(1)
+        os.kill(pid, signal.SIGHUP)
 
     def getLogFile(self):
         if self._logFile is not None:

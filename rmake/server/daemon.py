@@ -21,6 +21,7 @@ rMake server daemon
 """
 import os
 import shutil
+import signal
 import sys
 import traceback
 
@@ -49,7 +50,7 @@ from rmake.server import wsgi_gunicorn
 from rmake.worker.chroot import rootmanager
 
 
-_commands = []
+_commands = [daemon.ReloadCommand]
 def register(cmd):
     _commands.append(cmd)
 
@@ -196,11 +197,33 @@ class rMakeDaemon(daemon.Daemon):
             self.logger.error(e)
             sys.exit(1)
 
-        proc = RmakeServerProc(cfg, self.plugins, logger=self.logger)
-        proc.serve_forever()
+        self.proc = RmakeServerProc(cfg, self.plugins, logger=self.logger)
+        signal.signal(signal.SIGHUP, self._reload)
+        self.proc.serve_forever()
 
     def runCommand(self, *args, **kw):
         return daemon.Daemon.runCommand(self, *args, **kw)
+
+    def _reload(self, signum, sigtb):
+        self.proc.reload()
+
+    @classmethod
+    def reloadConfig(cls):
+        # Have to rerun the entire command framework to parse config-related
+        # cmdline options.
+        cfg = []
+        def runCommand(thisCommand, cfg_, *args, **kwargs):
+            cfg[:] = [cfg_]
+            return 0
+        d = cls()
+        d.runCommand = runCommand
+        d.setSysExcepthook = False
+        try:
+            d.main(sys.argv)
+        except SystemExit:
+            pass
+        assert cfg and cfg[0]
+        return cfg[0]
 
 
 class RmakeServerProc(server_mod.Server):
@@ -209,12 +232,14 @@ class RmakeServerProc(server_mod.Server):
         self.cfg = cfg
         self.buildPids = {}
         self.criticalPids = {}
+        self.rpcPid = None
         self.db = None
         self.plugins = pluginMgr
         self.nodeClient = None
         self.eventHandler = EventHandler(self)
         self._subscribers = []
         self._jobsPending = False
+        self._reloadPending = False
         server_mod.Server.__init__(self, logger=logger)
 
     def serve_forever(self):
@@ -239,6 +264,11 @@ class RmakeServerProc(server_mod.Server):
         self.plugins.callServerHook('server_shutDown', self)
 
     # Server/PID management
+
+    def reload(self):
+        self._reloadPending = True
+        if self.rpcPid:
+            os.kill(self.rpcPid, signal.SIGHUP)
 
     def _close(self):
         if self.db:
@@ -379,9 +409,11 @@ and check the log file at %s for detailed diagnostics.
     def _startRPC(self):
         pid = self._fork('rpc', criticalLogPath=self.cfg.getServerLogPath())
         if pid:
+            self.rpcPid = pid
             return
         try:
-            wsgi = wsgi_gunicorn.GunicornServer(self.cfg)
+            configFunc = rMakeDaemon.reloadConfig
+            wsgi = wsgi_gunicorn.GunicornServer(configFunc)
             wsgi.run()
         except SystemExit as err:
             os._exit(err.args[0])
@@ -410,6 +442,13 @@ and check the log file at %s for detailed diagnostics.
 
     def _serveLoopHook(self):
         self._collectChildren()
+        if self._reloadPending:
+            self._reloadPending = False
+            try:
+                cfg = rMakeDaemon.reloadConfig()
+                self.cfg.updateFromReloaded(cfg, log=self)
+            except Exception:
+                self.exception("Unable to reload configuration:")
         self.startJob()
         self.plugins.callServerHook('server_loop', self)
 

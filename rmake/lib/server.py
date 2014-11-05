@@ -157,6 +157,7 @@ class Server(object):
             self._killPid(pid, name)
 
     def _resetSignalHandlers(self):
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.signal(signal.SIGINT, signal.default_int_handler)
 

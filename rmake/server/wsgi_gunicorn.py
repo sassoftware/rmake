@@ -27,11 +27,16 @@ class GunicornServer(base.BaseApplication):
 
     appClass = WSGIApplication
 
-    def __init__(self, cfg):
-        self.serverCfg = cfg
+    def __init__(self, configFunc):
+        self.configFunc = configFunc
+        self.serverCfg = None
         super(GunicornServer, self).__init__()
 
     def load_config(self):
+        if self.serverCfg:
+            self.serverCfg.updateFromReloaded(self.configFunc(), log=None)
+        else:
+            self.serverCfg = self.configFunc()
         self.cfg.set('proc_name', 'rmake rpc')
         self.cfg.set('workers', self.serverCfg.rpcWorkers)
         self.cfg.set('timeout', 3600) # FIXME

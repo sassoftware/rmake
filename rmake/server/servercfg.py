@@ -28,6 +28,7 @@ import sys
 import subprocess
 import urllib
 import urllib2
+from StringIO import StringIO
 
 from conary import dbstore
 from conary.lib import log, cfg, util
@@ -216,6 +217,15 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
             ('serverUrl',   'reposUrl'),
             ('serverName',  'reposName'),
             ('user',        'reposUser'),
+            ]
+
+    _reloadable = [
+            'reposName',
+            'reposUrl',
+            'reposUser',
+            'rmakeUrl',
+            'rpcWorkers',
+            'sslCertPath',
             ]
 
     def __init__(self, readConfigFiles = False, ignoreErrors=False):
@@ -507,3 +517,20 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
             certfname = certfiles.pop()
             open(certfname, "w+").write(data)
         return 0
+
+    def updateFromReloaded(self, newCfg, log):
+        """Copy updateable options from a newly reloaded config"""
+        newCfg.sanityCheck()
+        newCfg.sanityCheckForStart()
+        for option in self.keys():
+            if self[option] == newCfg[option]:
+                continue
+            if option not in self._reloadable:
+                if log:
+                    log.warning("Change of option %s requires a restart", option)
+                continue
+            self[option] = newCfg[option]
+            sio = StringIO()
+            self.displayKey(option, sio)
+            if log:
+                log.info("Configuration changed: %s", sio.getvalue().rstrip())

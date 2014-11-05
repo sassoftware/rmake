@@ -71,6 +71,16 @@ stop() {
     return $RETVAL
 }
 
+reload() {
+    echo -n $"Reloading ${desc}: "
+    cd @confdir@;
+    @sbindir@/${prog} reload ${PRE_OPTS}
+    RETVAL=$?
+    [ $RETVAL = 0 ] && success || failure
+    echo
+    return $RETVAL
+}
+
 restart() {
     stop
     start
@@ -113,8 +123,11 @@ case "$1" in
     status)
         status -p $pidfile -l $lockfile ${prog}
         ;;
-    restart|reload)
+    restart)
         restart
+        ;;
+    reload)
+        reload
         ;;
     reset)
         reset
