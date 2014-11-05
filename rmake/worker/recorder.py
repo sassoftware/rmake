@@ -25,6 +25,7 @@ from rmake.lib import procutil
 from rmake.lib import server
 
 class BuildLogRecorder(asyncore.dispatcher, server.Server):
+
     def __init__(self, key=None):
         server.Server.__init__(self)
         self.host = procutil.getNetName()
@@ -32,6 +33,7 @@ class BuildLogRecorder(asyncore.dispatcher, server.Server):
         self.logPath = None
         self.logFd = None
         self.key = key
+        self.ppid = None
 
     def _exit(self, rc=0):
         return os._exit(rc)
@@ -43,6 +45,7 @@ class BuildLogRecorder(asyncore.dispatcher, server.Server):
                     os.close(fd)
                 except OSError, e:
                     pass
+        self.ppid = os.getppid()
 
     def attach(self, trove, map=None):
         asyncore.dispatcher.__init__(self, None, map)
@@ -50,8 +53,11 @@ class BuildLogRecorder(asyncore.dispatcher, server.Server):
         self.openSocket()
         self.openLogFile()
 
-    def handleRequestIfReady(self, sleepTime=0.1):
+    def handleRequestIfReady(self, sleepTime=2):
         asyncore.poll2(timeout=sleepTime, map=self._map)
+        if os.getppid() != self.ppid:
+            # Orphaned!
+            self.close()
 
     def getPort(self):
         return self.port
