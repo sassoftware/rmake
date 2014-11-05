@@ -59,18 +59,6 @@ class DispatcherServer(server.Server):
     def getClient(self):
         return self.client
 
-    def _installSignalHandlers(self):
-        self.client._installSignalHandlers()
-        def _interrupt(*args, **kw):
-            import epdb
-            if hasattr(epdb, 'serve'):
-                epdb.serve()
-            else:
-                epdb.st()
-        # if you kill the dispatcher w/ SIGUSR1 you'll get a breakpoint.
-        import signal
-        signal.signal(signal.SIGUSR1, _interrupt)
-
     def listNodes(self):
         return [ x.sessionId for x in self._nodes.getNodes() ]
 

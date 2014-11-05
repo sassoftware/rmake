@@ -255,6 +255,7 @@ class RmakeServerProc(server_mod.Server):
                 self.criticalPids[pid] = criticalLogPath
             return pid
         self._close()
+        self._resetSignalHandlers()
         if self.db and not close:
             self.db.reopen()
         return pid

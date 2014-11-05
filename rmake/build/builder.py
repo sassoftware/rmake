@@ -98,11 +98,11 @@ class Builder(object):
         signal.signal(signal.SIGTERM, self._signalHandler)
         signal.signal(signal.SIGINT, self._signalHandler)
         def _interrupt(*args, **kw):
-            from conary.lib import debugger
-            if hasattr(debugger, 'serve'):
-                debugger.serve()
-            else:
-                debugger.st()
+            try:
+                import epdb
+            except ImportError:
+                from conary.lib import debugger as epdb
+            epdb.serve()
         # if you kill the dispatcher w/ SIGUSR1 you'll get a breakpoint.
         signal.signal(signal.SIGUSR1, _interrupt)
 

@@ -174,9 +174,18 @@ class Server(object):
         self._haltSignal = sigNum
         return
 
+    @staticmethod
+    def _breakpoint(signum, sigtb):
+        try:
+            import epdb
+        except ImportError:
+            from conary.lib import debugger as epdb
+        epdb.serve()
+
     def _installSignalHandlers(self):
         signal.signal(signal.SIGTERM, self._signalHandler)
         signal.signal(signal.SIGINT, self._signalHandler)
+        signal.signal(signal.SIGUSR1, self._breakpoint)
 
     def _collectChildren(self):
         while True:

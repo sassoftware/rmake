@@ -117,19 +117,6 @@ class rMakeWorkerNodeServer(worker.Worker):
         self.stopCommand(commandId=info.getCommandId(),
                          targetCommandId=info.getTargetCommandId())
 
-    def _installSignalHandlers(self):
-        worker.Worker._installSignalHandlers(self)
-        # if you kill the dispatcher w/ SIGUSR1 you'll get a breakpoint.
-        # just let signals be handled normally
-        def _interrupt(*args, **kw):
-            import epdb
-            if hasattr(epdb, 'serve'):
-                epdb.serve()
-            else:
-                epdb.st()
-        signal.signal(signal.SIGUSR1, _interrupt)
-
-
     def _signalHandler(self, signal, frame):
         server.Server._signalHandler(self, signal, frame)
         os.kill(os.getpid(), signal)

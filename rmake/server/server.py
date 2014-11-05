@@ -290,10 +290,6 @@ class rMakeServer(apirpc.XMLApiServer):
 
     # --- internal functions
 
-    #def getBuilder(self, job):
-    #    b = builder.Builder(self.cfg, job, db=self.db)
-    #    return b
-
     def updateBuildConfig(self, buildConfig):
         buildConfig.repositoryMap.update(self.cfg.getRepositoryMap())
         for serverName, user, password in self.cfg.getUserGlobs():
@@ -325,21 +321,6 @@ class rMakeServer(apirpc.XMLApiServer):
         for sub in self._subscribers:
             sub.attach(job)
         job.own()
-
-    #def _setUpInternalUser(self):
-    #    user = ''.join([chr(random.randint(ord('a'),
-    #                       ord('z'))) for x in range(10)])
-    #    password = ''.join([chr(random.randint(ord('a'), 
-    #                            ord('z'))) for x in range(10)])
-    #    if isinstance(self.uri, str):
-    #        schema, url = urllib.splittype(self.uri)
-    #        if schema in ('http', 'https'):
-    #            host, rest = urllib.splithost(url)
-    #            olduser, host = urllib.splituser(host)
-    #            uri = '%s://%s:%s@%s%s' % (schema, user, password, host, rest)
-    #            self.uri = uri
-
-    #    self.internalAuth = (user, password)
 
     def __init__(self, cfg, serverLogger):
         self.nodeClient = None
