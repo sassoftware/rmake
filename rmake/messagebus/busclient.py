@@ -48,10 +48,10 @@ class MessageBusClientLogger(logger.MessageBusLogger):
     consoleFormat = '%(asctime)s - [%(sessionId)s] - %(message)s'
     messageFormat = '%(asctime)s - [%(sessionId)s] - %(message)s'
 
-    def __init__(self, logPath):
+    def __init__(self, name=None, logPath=None):
         self.formatterClass = BusClientFormatterFactory(self)
         self.sessionId = 'Not Registered (%s)' % socket.getfqdn()
-        logger.MessageBusLogger.__init__(self, 'busclient', logPath=logPath)
+        logger.MessageBusLogger.__init__(self, name=name, logPath=logPath)
         self.enableConsole()
 
     def setSessionId(self, sessionId):
@@ -67,8 +67,10 @@ class MessageBusClient(object):
 
     def __init__(self, host, port, dispatcher, sessionClass='',
                  logPath=None, messageLogPath=None,
-                 connectionTimeout=0, subscriptions=None):
-        self.logger = MessageBusClientLogger(logPath=logPath)
+                 connectionTimeout=0, subscriptions=None,
+                 name=None,
+                 ):
+        self.logger = MessageBusClientLogger(name=name, logPath=logPath)
         self.dispatcher = dispatcher
         if messageLogPath:
             self.logger.logMessagesToFile(messageLogPath)

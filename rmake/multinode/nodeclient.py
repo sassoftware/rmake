@@ -25,10 +25,10 @@ from rmake.multinode import messages
 
 class NodeClient(apirpc.ApiServer):
 
+    name = None
     sessionClass = 'Anonymous'
 
     subscriptions = []
-    
 
     def __init__(self, messageBusHost, messageBusPort, cfg, server, node=None,
                  logMessages=True):
@@ -47,7 +47,9 @@ class NodeClient(apirpc.ApiServer):
                                               sessionClass=self.sessionClass,
                                               logPath=logPath,
                                               messageLogPath=messageLogPath,
-                                              subscriptions=self.subscriptions)
+                                              subscriptions=self.subscriptions,
+                                              name=self.name,
+                                              )
         apirpc.ApiServer.__init__(self, self.bus.logger)
 
     def messageReceived(self, m):
