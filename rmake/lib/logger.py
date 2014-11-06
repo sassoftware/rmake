@@ -44,7 +44,7 @@ class Logger(object):
     def __init__(self, name=None, logPath=None):
         # do some borg magic to ensure there's only one Logger instance per
         # class + name
-        if not hasattr(self.__class__, '_dict'):
+        if '_dict' not in self.__class__.__dict__:
             self.__class__._dict = {}
         if name is not None:
             self.name = name
