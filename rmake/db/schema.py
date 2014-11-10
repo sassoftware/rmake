@@ -66,9 +66,6 @@ def createJobConfig(db):
     if db.createIndex("JobConfig", "JobContextIdx", "jobId, context",
                       unique = False):
         commit = True
-    if db.createIndex("JobConfig", "JobConfigContextKeyIdx", 
-                      "jobId, context, key", unique = False):
-        commit = True
     return commit
 
 def createTroveSettings(db):
@@ -126,10 +123,6 @@ def createBuildTroves(db):
                 ON DELETE CASCADE ON UPDATE RESTRICT
         )""" % db.keywords)
         db.tables["BuildTroves"] = []
-        commit = True
-    if db.createIndex("BuildTroves", "BuildTrovesIdx",
-                      "jobId, troveName, version, flavor",
-                      unique = False):
         commit = True
     if db.createIndex("BuildTroves", "BuildTrovesContextIdx",
                       "jobId, troveName, version, flavor, context",
