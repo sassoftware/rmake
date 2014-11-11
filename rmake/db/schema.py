@@ -347,7 +347,6 @@ class AbstractMigrator(object):
         cu.execute("DROP TABLE %s" % tmpTable)
 
     def migrate(self, currentVersion, newVersion):
-        self.db.transaction()
         if currentVersion < newVersion:
             while currentVersion < newVersion:
                 # migration returns the schema that they migrated to.
@@ -364,8 +363,6 @@ class SchemaManager(AbstractSchemaManager):
 
     def createTables(self, doCommit=True):
         db = self.db
-        if doCommit:
-            db.transaction()
 
         changed = False
         changed |= createJobs(db)

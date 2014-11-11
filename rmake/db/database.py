@@ -34,6 +34,8 @@ class DBInterface(object):
         self._holdCommits = False
         self.db = db
         self.schemaVersion = self.loadSchema(migrate=True)
+        # Make sure transaction is closed after loadSchema
+        self.commit()
 
     def _getOne(self, cu, key):
         try:
@@ -54,7 +56,6 @@ class DBInterface(object):
             Commits after running a function
         """
         self._holdCommits = True
-        self.db.transaction()
         try:
             rv = fn(*args, **kw)
             self._holdCommits = False
@@ -67,15 +68,14 @@ class DBInterface(object):
 
     def commit(self):
         if not self._holdCommits:
-            return self.db.commit()
+            if self.db.inTransaction(True):
+                return self.db.commit()
         else:
             return True
 
     def rollback(self):
-        return self.db.rollback()
-
-    def inTransaction(self):
-        return self.db.inTransaction()
+        if self.db.inTransaction(True):
+            return self.db.rollback()
 
     def reopen(self):
         if self.db:

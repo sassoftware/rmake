@@ -181,6 +181,7 @@ class XMLRPCResponseHandler(object):
     def __init__(self, request, debug=True):
         self.request = request
         self.debug = debug
+        self.ok = None
 
     def callResponseFn(self, fn, *args, **kw):
         try:
@@ -197,8 +198,10 @@ class XMLRPCResponseHandler(object):
 
     def serializeResponse(self, response):
         if isinstance(response, xmlrpclib.Fault):
+            self.ok = False
             response = xmlrpc_null.dumps(response)
         else:
+            self.ok = response[0]
             response = (response,)
             response = xmlrpc_null.dumps(response, methodresponse=1)
         return response

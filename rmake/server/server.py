@@ -322,6 +322,22 @@ class rMakeServer(apirpc.XMLApiServer):
             sub.attach(job)
         job.own()
 
+    def _dispatch(self, method, (auth, response, params)):
+        try:
+            rv = super(rMakeServer, self)._dispatch(method,
+                    (auth, response, params))
+            if response.ok:
+                self.db.commit()
+            else:
+                self.db.rollback()
+            return rv
+        except:
+            self.db.rollback()
+            raise
+        finally:
+            # Can't leave the bus client socket open because nothing is polling it.
+            self.nodeClient.disconnect()
+
     def __init__(self, cfg, serverLogger):
         self.nodeClient = None
         self.cfg = cfg

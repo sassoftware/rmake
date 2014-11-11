@@ -183,6 +183,7 @@ class DispatcherServer(server.Server):
 
     def _serveLoopHook(self):
         self._collectChildren()
+        self.db.commit()
 
     def serve(self):
         self.serve_forever()

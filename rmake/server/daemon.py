@@ -390,7 +390,7 @@ and check the log file at %s for detailed diagnostics.
         self._subscribers.append(mn_subscriber._RmakeBusPublisher(self.nodeClient))
 
     def _startDispatcher(self):
-        pid = self._fork('dispatcher',
+        pid = self._fork('dispatcher', close=False,
                 criticalLogPath=self.cfg.getDispatcherLogPath())
         if pid:
             return
@@ -407,7 +407,8 @@ and check the log file at %s for detailed diagnostics.
             os._exit(70)
 
     def _startRPC(self):
-        pid = self._fork('rpc', criticalLogPath=self.cfg.getServerLogPath())
+        pid = self._fork('rpc', close=True,
+                criticalLogPath=self.cfg.getServerLogPath())
         if pid:
             self.rpcPid = pid
             return
@@ -451,6 +452,7 @@ and check the log file at %s for detailed diagnostics.
                 self.exception("Unable to reload configuration:")
         self.startJob()
         self.plugins.callServerHook('server_loop', self)
+        self.db.commit()
 
     def handleRequestIfReady(self, sleepTime=0.1):
         if self._jobsPending:

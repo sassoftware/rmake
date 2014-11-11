@@ -86,8 +86,6 @@ class WSGIApplication(object):
         method, params = self._parseRPC(self._unwrapRPC(request))
         responseHandler = WSGIResponseHandler(self.responseFactory)
         self.server._dispatch(method, (request.auth, responseHandler, params))
-        # Can't leave the bus client socket open because nothing is polling it.
-        self.server.nodeClient.disconnect()
         return responseHandler.getResponse()
 
     @staticmethod
@@ -147,7 +145,7 @@ class WSGIResponseHandler(rpclib.XMLRPCResponseHandler):
         self.sendResponse(rv)
 
     def sendResponse(self, rv):
-        responseString = xmlrpc_null.dumps((rv,), methodresponse=1)
+        responseString = self.serializeResponse(rv)
         response = self.responseFactory(body=responseString)
         response.content_type = 'text/xml'
         self._response = response
