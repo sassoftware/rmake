@@ -328,8 +328,8 @@ class NodeList(object):
         self._nodes = {}
         self._assignedCommands = {}
         self._commands = {}
-        self._openSlots = {}
-        self._openChroots = {}
+        self._usedSlots = {}
+        self._usedChroots = {}
         self._commandsByJob = {}
         self._suspended = set()
         self.nodeDb = nodeDb
@@ -338,9 +338,9 @@ class NodeList(object):
     def add(self, sessionId, node):
         node.sessionId = sessionId
         self._nodes[sessionId] = node
-        self._assignedCommands[sessionId] = []
-        self._openSlots[sessionId] = node.slots
-        self._openChroots[sessionId] = node.chrootLimit
+        self._assignedCommands.setdefault(sessionId, [])
+        self._usedSlots.setdefault(sessionId, 0)
+        self._usedChroots.setdefault(sessionId, 0)
         self.nodeDb.addNode(node.name, node.host, node.slots, node.buildFlavors,
                             node.chroots)
 
@@ -349,8 +349,8 @@ class NodeList(object):
         self.nodeDb.removeNode(node.name)
         for command in self._assignedCommands.pop(sessionId, []):
             self._commands.pop(command.getCommandId())
-        self._openSlots.pop(sessionId, None)
-        self._openChroots.pop(sessionId, None)
+        self._usedSlots.pop(sessionId, None)
+        self._usedChroots.pop(sessionId, None)
         self._suspended.discard(sessionId)
 
     def suspend(self, sessionId):
@@ -382,7 +382,7 @@ class NodeList(object):
         return sessionId in self._nodes
 
     def _getScore(self, node):
-        usedSlots = node.slots - self._openSlots[node.sessionId]
+        usedSlots = self._usedSlots[node.sessionId]
         if usedSlots == 0:
             return 0
         else:
@@ -397,16 +397,18 @@ class NodeList(object):
         return self._nodes.values()
 
     def getOpenNodes(self, requiresChroot=False):
-        availNodes = [ self._nodes[x[0]]
-                       for x in self._openSlots.iteritems()
-                       if x[1] > 0 and x[0] not in self._suspended
-                       ]
-        if requiresChroot:
-            availNodes = [ x for x in availNodes
-                           if self._openChroots[x.sessionId] > 0 ]
-        # only return nodes whose load average is below their threshold
-        return [ x for x in availNodes
-                 if x.nodeInfo.getLoadAverage(1) < x.loadThreshold ]
+        candidates = []
+        for sessionId, node in self._nodes.items():
+            if sessionId in self._suspended:
+                continue
+            if self._usedSlots[sessionId] >= node.slots:
+                continue
+            if requiresChroot and self._usedChroots[sessionId] >= node.chrootLimit:
+                continue
+            if node.nodeInfo.getLoadAverage(1) > node.loadThreshold:
+                continue
+            candidates.append(node)
+        return candidates
 
     def getCommandAssignments(self):
         # returns commandId, sessionId pairs
@@ -459,10 +461,10 @@ class NodeList(object):
 
         self.logger.info('removing command: %s' % commandId)
 
-        if sessionId in self._openSlots:
-            self._openSlots[sessionId] += 1
-        if sessionId in self._openChroots and command.requiresChroot():
-            self._openChroots[sessionId] += 1
+        if sessionId in self._usedSlots:
+            self._usedSlots[sessionId] = max(0, self._usedSlots[sessionId] - 1)
+        if sessionId in self._usedChroots and command.requiresChroot():
+            self._usedChroots[sessionId]  = max(0, self._usedChroots[sessionId] - 1)
         commandsByJob = self._commandsByJob.get(command.getJobId(), [])
         if command in commandsByJob:
             commandsByJob.remove(command)
@@ -470,23 +472,20 @@ class NodeList(object):
             self._assignedCommands[sessionId].remove(command)
         return command
 
-    def _logDict(self, title, data):
-        self.logger.info('%s:' % title)
-        for item in sorted([ '\t%s: %s' % (x, y) for x, y in data.iteritems() ]):
-            self.logger.info(item)
-
     def assignCommand(self, command, node):
         sessionId = node.sessionId
         self._commands[command.getCommandId()] = sessionId, command
         self._commandsByJob.setdefault(command.getJobId(), []).append(
                                                                   command)
         self._assignedCommands[sessionId].append(command)
-        self._logDict('Current OpenSlots', self._openSlots)
-        self._openSlots[sessionId] -= 1
+        for sessionId, node2 in sorted(self._nodes.items()):
+            self.logger.info("  node %s using %d/%d slots, %d/%d chroots",
+                    sessionId,
+                    self._usedSlots[sessionId], node2.slots,
+                    self._usedChroots[sessionId], node2.chrootLimit)
+        self._usedSlots[node.sessionId] += 1
         if command.requiresChroot():
-            self._logDict('Current OpenChroots', self._openChroots)
-            self._openChroots[sessionId] -= 1
-
+            self._usedChroots[node.sessionId] += 1
         self.logger.info('assigned %s to %s' % (command.getCommandId(), node.host))
 
     def assignCommands(self, commands):
