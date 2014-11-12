@@ -28,11 +28,15 @@ class NodeClient(apirpc.ApiServer):
     name = None
     sessionClass = 'Anonymous'
 
-    subscriptions = []
+    subscriptions = ['/register-request']
 
     def __init__(self, messageBusHost, messageBusPort, cfg, server, node=None,
                  logMessages=True):
-        self.subscriptions = list(self.subscriptions) # copy from class
+        subscriptions = set()
+        for cls in type(self).mro():
+            if 'subscriptions' in cls.__dict__:
+                subscriptions.update(cls.subscriptions)
+        self.subscriptions = list(subscriptions)
         self.cfg = cfg
         self.server = server
         self.node = node
@@ -53,7 +57,8 @@ class NodeClient(apirpc.ApiServer):
         apirpc.ApiServer.__init__(self, self.bus.logger)
 
     def messageReceived(self, m):
-        if isinstance(m, messages.ConnectedResponse):
+        if isinstance(m, (messages.ConnectedResponse,
+                    messages.RegisterRequest)):
             if self.node:
                 m = messages.RegisterNodeMessage()
                 m.set(self.node)

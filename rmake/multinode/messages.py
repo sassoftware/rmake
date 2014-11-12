@@ -39,6 +39,14 @@ class RegisterNodeMessage(Message):
     def loadPayloadFromDict(self, d):
         self.payload.node = nodetypes.thawNodeType(d['node'])
 
+
+class RegisterRequest(Message):
+    """
+    Prompt all node clients to send a RegisterNodeMessage
+    """
+    messageType = 'REGISTER_REQUEST'
+
+
 class EventList(Message):
     messageType = 'EVENT'
 

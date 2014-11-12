@@ -291,6 +291,9 @@ class DispatcherNodeClient(nodeclient.NodeClient):
                 self.server.commandInProgress(m.getCommandId())
             elif m.isErrored():
                 self.server.commandErrored(m.getCommandId())
+        elif isinstance(m, messages.ConnectedResponse):
+            self.getBusClient().sendMessage('/register-request',
+                    messages.RegisterRequest())
 
     def assignCommand(self, command, node):
         command.setTargetNode(node.sessionId)

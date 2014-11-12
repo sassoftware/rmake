@@ -255,8 +255,6 @@ class WorkerNodeClient(nodeclient.NodeClient):
         elif isinstance(m, messages.LoadCommand):
             self.server.info('Received load command')
             self.server.receivedLoadCommand(m)
-        else:
-            self.server.info('Received unknown command')
 
     def commandErrored(self, commandId, message, traceback=''):
         """
