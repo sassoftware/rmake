@@ -76,8 +76,6 @@ class Builder(object):
         self.buildCfg = job.getMainConfig()
         self.logger = BuildLogger(job.jobId,
                                   serverCfg.getBuildLogPath(job.jobId))
-        self.logFile = logfile.LogFile(
-                                    serverCfg.getBuildLogPath(job.jobId))
         self.repos = self.getRepos()
         self.job = job
         self.jobId = job.jobId
@@ -107,7 +105,6 @@ class Builder(object):
         signal.signal(signal.SIGUSR1, _interrupt)
 
     def _closeLog(self):
-        self.logFile.close()
         self.logger.close()
 
     def setJobContext(self, jobList):
@@ -145,18 +142,11 @@ class Builder(object):
         try:
             try:
                 signal.signal(signal.SIGTERM, self._signalHandler)
-                self.logFile.redirectOutput() # redirect all output to the log 
-                                              # file.
-                                              # We do this to ensure that
-                                              # output we don't control,
-                                              # such as conary output, is
-                                              # directed to a file.
                 self.build()
                 os._exit(0)
             except Exception, err:
                 self.logger.error(traceback.format_exc())
                 self.job.exceptionOccurred(err, traceback.format_exc())
-                self.logFile.restoreOutput()
                 try:
                     self.worker.stopAllCommands()
                 finally:
