@@ -14,66 +14,55 @@
 # limitations under the License.
 #
 
-
+import logging
 import os
-import select
 import socket
 import sys
-
 from conary.lib import util
 from rmake import errors
 
+log = logging.getLogger(__name__)
+
+
 class LogFile(object):
 
-    def __init__(self, path, mode='a'):
-        self.fd = None
-        self.tee = None
+    def __init__(self, pathOrLogData):
+        self.file_out = None
         self.stdout = None
-        self.open(path, mode)
-
-    def __del__(self):
-        if self.fd:
-            self.close()
-
-    def open(self, path, mode):
-        if isinstance(path, int):
-            logfd = path
+        self.stderr = None
+        self.redirected = False
+        if isinstance(pathOrLogData, (list, tuple)):
+            self.logToPort(*pathOrLogData)
+        elif isinstance(pathOrLogData, basestring):
+            self.open(pathOrLogData)
         else:
-            util.mkdirChain(os.path.dirname(path))
-            logfd = os.open(path, os.O_CREAT | os.O_APPEND | os.O_WRONLY)
-        self.fd = logfd
+            raise TypeError
+
+    def open(self, path):
+        util.mkdirChain(os.path.dirname(path))
+        self.file_out = open(path, 'a')
 
     def write(self, data):
-        os.write(self.fd, data)
+        self.file_out.write(data)
 
     def close(self):
         if self.stdout:
             self.restoreOutput()
-        if self.fd:
-            file = os.fdopen(self.fd, 'w')
-            file.flush()
-            file.close()
-            self.fd = None
-        if self.tee:
-            self.tee.close()
-            self.tee = None
-
-    def teeOutput(self):
-        self.tee = Tee()
-        outFile = self.tee.tee(self.fd, sys.stdout.fileno())
-        os.close(self.fd)
-        self.fd = outFile
-        self.redirectOutput()
+        if self.file_out:
+            self.file_out.close()
+            self.file_out = None
 
     def redirectOutput(self, close=False):
+        if self.redirected:
+            return
         sys.stdout.flush()
         sys.stderr.flush()
         if not close:
             self.stdout = os.dup(sys.stdout.fileno())
             self.stderr = os.dup(sys.stderr.fileno())
-
-        os.dup2(self.fd, sys.stdout.fileno())
-        os.dup2(self.fd, sys.stderr.fileno())
+        os.dup2(self.file_out.fileno(), sys.stdout.fileno())
+        os.dup2(self.file_out.fileno(), sys.stderr.fileno())
+        self.redirected = True
 
     def logToPort(self, host, port, key=None):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -83,14 +72,13 @@ class LogFile(object):
             status = s.recv(3)
             if status != 'OK\n':
                 raise errors.ServerError("Could not connect to socket")
-        socketFd = s.fileno()
-        self.tee = Tee()
-        outFile = self.tee.tee(self.fd, socketFd)
-        os.close(self.fd)
-        self.fd = outFile
+        self.sock = s
+        self.file_out = os.fdopen(s.fileno(), 'w', 1)
         self.redirectOutput()
 
     def restoreOutput(self):
+        if not self.redirected:
+            return
         sys.stdout.flush()
         sys.stderr.flush()
         os.dup2(self.stdout, sys.stdout.fileno())
@@ -99,51 +87,4 @@ class LogFile(object):
         os.close(self.stderr)
         self.stdout = None
         self.stderr = None
-
-class Tee(object):
-    def __init__(self):
-        self.pid = None
-
-    def __del__(self):
-        if self.pid:
-            self.close()
-
-    def close(self):
-        if self.pid:
-            pid = self.pid
-            self.pid = None
-            os.waitpid(pid, 0)
-
-    def tee(self, out1, out2):
-        inFile, outFile = os.pipe()
-        self.outFile = outFile
-        self.pid = os.fork()
-        if self.pid:
-            os.close(inFile)
-            return outFile
-        for fd in range(3,256):
-            if fd in (inFile, out1, out2):
-                continue
-            try:
-                os.close(fd)
-            except OSError, e:
-                pass
-        try:
-            from rmake.lib import osutil
-            osutil.setproctitle('rmake logger')
-        except:
-            pass
-        try:
-            BUFFER = 64 * 1024
-            while True:
-                try:
-                    ready = select.select([inFile], [], [])[0]
-                except select.error, e:
-                    continue
-                rv = os.read(inFile, BUFFER)
-                if not rv:
-                    break
-                os.write(out1, rv)
-                os.write(out2, rv)
-        finally:
-            os._exit(0)
+        self.redirected = False

@@ -174,10 +174,10 @@ class Command(server.Server):
         self.commandStarted()
         self.logger = logger.Logger(self.name) # output to stdout so logging
                                                # is all covered by logFile
-        self.logFile = logfile.LogFile(self.getLogPath())
         if self.logData:
-            self.logFile.logToPort(*self.logData)
+            self.logFile = logfile.LogFile(self.logData)
         else:
+            self.logFile = logfile.LogFile(self.getLogPath())
             self.logFile.redirectOutput()
         try:
             self.logger.info('Running Command... (pid %s)' % os.getpid())
@@ -196,6 +196,7 @@ class Command(server.Server):
                 self.commandFinished()
         finally:
             self.logFile.restoreOutput()
+            self.logFile.close()
 
     def isErrored(self):
         return self._isErrored

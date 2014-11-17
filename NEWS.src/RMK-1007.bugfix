@@ -1,0 +1,1 @@
+rmake-node no longer saves a copy of command logs in in /var/log/rmake that are available through e.g. "rmake q --logs".
