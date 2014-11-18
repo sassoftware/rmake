@@ -41,6 +41,4 @@ class Node(object):
         self.flavors = [ thaw('flavor', x) for x in self.flavors ]
         return self
 
-    def addChroot(self, chroot):
-        self.chroots.append(chroot)
 apiutils.register(Node)

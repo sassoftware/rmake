@@ -606,10 +606,7 @@ class rMakeChroot(ConaryBasedChroot):
             os.unlink(util.joinPaths(root, '/var/lib/conarydb/conarydb'))
         except OSError:
             pass
-        # attempt to remove just the /tmp dir first.
-        # that's where the chroot process should have had all
-        # of its files.  Doing this makes sure we don't remove
-        # /bin/rm while it might still be needed the next time around.
+        # attempt to remove just the /tmp dir
         p = subprocess.Popen(['/bin/rm', '-rf', root + '/tmp'], shell=False,
                 stderr=subprocess.PIPE)
         _, stderr = p.communicate()
@@ -617,10 +614,10 @@ class rMakeChroot(ConaryBasedChroot):
         if os.path.exists(root + '/tmp'):
             removeFailed = True
         else:
+            # Remove the rest of the root
             p = subprocess.Popen(['/bin/rm', '-rf', root], shell=False,
                     stderr=subprocess.PIPE)
             _, stderr = p.communicate()
-            self._clean_busy(root)
             if os.path.exists(root):
                 removeFailed = True
         if removeFailed:
@@ -638,45 +635,6 @@ class rMakeChroot(ConaryBasedChroot):
                 ' please remove the old root by hand.' % root)
         self._unlock(root, cleanup=True)
         return not removeFailed
-
-    def _clean_busy(self, root):
-        """
-        Try multiple times to delete an empty chroot dir, which is busy due to
-        existing (namespaced) mounts. If that fails then move it out of the
-        way.
-        """
-        try:
-            os.rmdir(root)
-            return
-        except OSError as err:
-            if err.args[0] != errno.EBUSY:
-                return
-        for n in range(5):
-            self.logger.error("chroot is busy, waiting and trying again to "
-                    "delete: %s", root)
-            time.sleep(n + 1)
-            try:
-                os.rmdir(root)
-            except OSError as err:
-                if err.args[0] != errno.EBUSY:
-                    return
-        # If it can't be deleted (possibly due to a kernel refcount leak), then
-        # just move it out of the way.
-        n = 1
-        while True:
-            deadpath = '%s.__dead.%d' % (root, n)
-            if not os.path.exists(deadpath):
-                break
-            n += 1
-        try:
-            os.rename(root, deadpath)
-        except OSError as err:
-            self.logger.error(
-                    "Failed to move busy chroot %s out of the way: %s",
-                    root, str(err))
-        else:
-            self.logger.warning("Moved busy chroot %s out of the way",
-                    root)
 
 
 class ExistingChroot(rMakeChroot):

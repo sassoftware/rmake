@@ -1,0 +1,3 @@
+Fixed failed chroots getting "lost" and not cleaned up until rmake-node was
+restarted. Also improved behavior when a chroot cannot be deleted due to an
+EBUSY error.

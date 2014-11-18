@@ -38,30 +38,39 @@ from rmake.lib import logger as logger_
 from rmake.lib import repocache
 
 class ChrootQueue(object):
+    CHROOT_RESERVED = 'reserved'
+    CHROOT_ACTIVE = 'active'
+    CHROOT_BAD = 'bad'
+
     def __init__(self, root, slots):
         self.root = root
         self.slots = slots
-        self.chroots = {}
-        self.toRemove = {}  # chroots that are scheduled for removal
-        self.badChroots = {}
+        self.reset()
 
     def reset(self):
         self.chroots = {}
-        self.toRemove = {}
-        self.badChroots = {}
+        self.chrootStatus = {}
+
+    def _listChroots(self, with_active):
+        if not os.path.exists(self.root):
+            return []
+        chroots = []
+        for name in os.listdir(self.root):
+            path = self.root + '/' + name
+            if not os.path.isdir(path):
+                continue
+            status = self.chrootStatus.get(path)
+            if status == self.CHROOT_BAD:
+                continue
+            if status and not with_active:
+                continue
+            chroots.append(path)
+        return chroots
 
     def listChroots(self):
         chroots = set(self.chroots)
-        if os.path.exists(self.root):
-            for name in os.listdir(self.root):
-                if '.__dead.' in name:
-                    continue
-                path = self.root + '/' + name
-                if os.path.isdir(path):
-                    chroots.add(path)
-        chroots = [ x for x in chroots if x not in self.badChroots ]
+        chroots.update(self._listChroots(with_active=True))
         return self._shortenChrootPaths(chroots)
-
 
     def _shortenChrootPaths(self, chrootPaths):
         finalChroots = []
@@ -72,19 +81,7 @@ class ChrootQueue(object):
         return finalChroots
 
     def listOldChroots(self):
-        chroots = []
-        if os.path.exists(self.root):
-            for name in os.listdir(self.root):
-                if '.__dead.' in name:
-                    continue
-                path = self.root + '/' + name
-                if (not os.path.isdir(path)
-                    or path in self.chroots
-                    or path in self.toRemove
-                    or path in self.badChroots):
-                    continue
-                chroots.append(path)
-        return [ x for x in chroots if x not in self.badChroots ]
+        return self._listChroots(with_active=False)
 
     def _createRootPath(self, troveName):
         name = troveName.rsplit(':', 1)[0]
@@ -93,34 +90,26 @@ class ChrootQueue(object):
         # length to a reasonable size.
         name = name[:32]
         path = os.path.join(self.root, name)
-        count = 1
-        if not os.path.exists(path) and not path in self.chroots:
-            self.chroots[path] = None
-            return path
+        count = 0
         while True:
-            fullPath = path + ('-%d' % count)
+            fullPath = path + ('-%d' % count) if count else path
             if not os.path.exists(fullPath) and not fullPath in self.chroots:
                 self.chroots[fullPath] = None
+                self.chrootStatus[fullPath] = self.CHROOT_ACTIVE
                 return fullPath
             else:
                 count += 1
 
-    def addChroot(self, path, chroot):
-        self.chroots[path] = chroot
-
     def chrootFinished(self, chrootPath):
         self.chroots.pop(chrootPath, False)
-
-    def deleteChroot(self, chrootPath):
-        self.chroots.pop(chrootPath, False)
-        self.toRemove.pop(chrootPath, False)
-        self.badChroots.pop(chrootPath, False)
+        self.chrootStatus.pop(chrootPath, None)
+    deleteChroot = chrootFinished
 
     def markBadChroot(self, chrootPath):
         # we tried to remove this chroot but it failed.
         # Never use this chroot again.
-        self.deleteChroot(chrootPath)
-        self.badChroots[chrootPath] = True
+        self.chroots.pop(chrootPath, None)
+        self.chrootStatus[chrootPath] = self.CHROOT_BAD
 
     def _getBestOldChroot(self, buildReqs, reuseRoot, goodRootsOnly=False):
         """
@@ -176,11 +165,9 @@ class ChrootQueue(object):
         else:
             oldPath = self._getBestOldChroot(buildReqs, reuseChroots)
         if oldPath:
-            self.toRemove[oldPath] = True
+            self.chrootStatus[oldPath] = self.CHROOT_RESERVED
         return (oldPath, newPath)
 
-    def useSlot(self, root):
-        self.chroots[root] = None
 
 class ChrootManager(object):
     def __init__(self, serverCfg, logger=None):
@@ -351,12 +338,18 @@ class rMakeChrootServer(object):
     def getChrootName(self):
         return self.getRoot().rsplit('/', 1)[-1]
 
-    def clean(self):
-        ok = self.chroot.clean(self.getRoot())
-        if ok:
-            self.queue.deleteChroot(self.getRoot())
+    def clean(self, old=False):
+        if old:
+            root = self.oldRoot
+            raiseError = False
         else:
-            self.queue.markBadChroot(self.getRoot())
+            root = self.root
+            raiseError = True
+        ok = self.chroot.clean(root, raiseError=raiseError)
+        if ok:
+            self.queue.deleteChroot(root)
+        else:
+            self.queue.markBadChroot(root)
 
     def unmount(self):
         return self.chroot.unmount(self.getRoot())
@@ -380,7 +373,7 @@ class rMakeChrootServer(object):
             self.chroot.unmount(self.getRoot())
         else:
             if self.oldRoot:
-                self.chroot.clean(self.oldRoot, raiseError=False)
+                self.clean(old=True)
             self.chroot.clean(self.getRoot())
         self.queue.chrootFinished(self.oldRoot)
         self.chroot.create(self.getRoot())
