@@ -168,6 +168,10 @@ class LocalChrootCache(ChrootCacheInterface):
         path = self._fingerPrintToPath(chrootFingerprint)
         prefix = sha1ToString(chrootFingerprint) + '.'
         util.mkdirChain(self.cacheDir)
+        lock = locking.LockFile(path + '.lock')
+        if not lock.acquire(wait=False):
+            # Busy, just do nothing
+            return
         fd, fn = tempfile.mkstemp(self.suffix, prefix, self.cacheDir)
         os.close(fd)
         try:
@@ -176,6 +180,7 @@ class LocalChrootCache(ChrootCacheInterface):
             os.rename(fn, path)
         finally:
             util.removeIfExists(fn)
+            lock.release()
         ChrootManifest.store(root, path)
         self.prune()
 
