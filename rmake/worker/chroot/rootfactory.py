@@ -198,6 +198,7 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
 
         self._installRPM()
         self._touchShadow()
+        util.settempdir(self.cfg.root + self.cfg.tmpDir)
 
         if self.bootstrapJobList:
             self.logger.info("Installing initial chroot bootstrap requirements")
@@ -224,6 +225,7 @@ class ConaryBasedChroot(rootfactory.BasicChroot):
             finally:
                 self.cfg.root = oldRoot
 
+        util.settempdir(self.cfg.tmpDir)
         self._uninstallRPM()
 
         # directories must be traversable and files readable (RMK-1006)
