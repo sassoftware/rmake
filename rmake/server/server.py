@@ -348,8 +348,6 @@ class rMakeServer(apirpc.XMLApiServer):
         self.auth = auth.AuthenticationManager(cfg.getAuthUrl(), self.db)
         self.nodeClient = mn_subscriber.RPCNodeClient(self.cfg, self)
 
-        subscriberLog = logger.Logger('susbscriber',
-                self.cfg.getSubscriberLogPath())
         self.worker = workerproxy.WorkerProxy(self.cfg, self.nodeClient,
                 self._logger)
         dbLogger = subscriber._JobDbLogger(self.db)

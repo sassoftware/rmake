@@ -23,11 +23,15 @@ import os
 import subprocess
 import tempfile
 import time
+from collections import namedtuple
 from rmake.lib import locking
 from rmake.worker.chroot.rootmanifest import ChrootManifest
 
 from conary.lib import util
 from conary.lib.sha1helper import sha1ToString, sha1FromString
+
+
+CachedItem = namedtuple('CachedItem', 'fingerprint atime size')
 
 
 class ChrootCacheInterface(object):
@@ -133,8 +137,7 @@ class ChrootCacheInterface(object):
         interval.
         """
         thresh = time.time() - 3600 * hours
-        return [fingerprint for (fingerprint, atime, size) in self.listCached()
-                if atime < thresh]
+        return [x.fingerprint for x in self.listCached() if x.atime < thresh]
 
     def setLogger(self, logger):
         self.logger = logger
@@ -211,22 +214,22 @@ class LocalChrootCache(ChrootCacheInterface):
             fingerprint = sha1FromString(name[:40])
             st = util.lstat(os.path.join(self.cacheDir, name))
             if st:
-                items.append((fingerprint, st.st_atime, st.st_size))
+                items.append(CachedItem(fingerprint, st.st_atime, st.st_size))
         return items
 
     def prune(self):
         if not self.sizeLimit:
             return
         cached = self.listCached()
-        cached.sort(key=lambda x: x[2])
-        total = sum(x[2] for x in cached)
-        for fingerprint, atime, size in cached:
+        cached.sort(key=lambda x: x.atime)
+        total = sum(x.size for x in cached)
+        for item in cached:
             if total < self.sizeLimit:
                 break
             self.logger.info("Deleting cached chroot %s to meet size limit",
-                    sha1ToString(fingerprint))
-            self.remove(fingerprint)
-            total -= size
+                    sha1ToString(item.fingerprint))
+            self.remove(item.fingerprint)
+            total -= item.size
 
 
 class LzopChrootCache(LocalChrootCache):
@@ -267,7 +270,7 @@ class DirBasedChrootCacheInterface(ChrootCacheInterface):
                     # Disappeared
                     continue
             size = 0
-            items.append((fingerprint, atime, size))
+            items.append(CachedItem(fingerprint, atime, size))
         return items
 
     def store(self, chrootFingerprint, root):
