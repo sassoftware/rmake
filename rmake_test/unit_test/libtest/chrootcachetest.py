@@ -18,6 +18,7 @@ from testutils import mock
 
 from rmake_test import rmakehelp
 from rmake.lib import chrootcache
+from rmake.lib import locking
 from rmake.worker.chroot.rootmanifest import ChrootManifest
 from conary.lib import util
 import subprocess
@@ -55,8 +56,10 @@ class LocalChrootCacheTest(rmakehelp.RmakeHelper):
         mock.replaceFunctionOnce(tempfile, 'mkstemp', mkstemp)
         mock.replaceFunctionOnce(os, 'rename', rename)
         mock.mock(ChrootManifest, 'store')
+        mock.mock(locking, 'LockFile')
         self.chrootCache.store('hash' * 5, '/some/dir')
         ChrootManifest.store._mock.assertCalled('/some/dir', '%s/6861736868617368686173686861736868617368.tar.gz' % self.cacheDir)
+        locking.LockFile._mock.assertCalled('%s/6861736868617368686173686861736868617368.tar.gz.lock' % self.cacheDir)
 
     def testRestore(self):
         def call(*args, **kw):
