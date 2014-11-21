@@ -125,6 +125,7 @@ class BasicChroot(AbstractChroot):
     def create(self, root):
         assert(root and root[0] == '/' and root != "/")
         self.root = root
+        self._createDirs()
         self.install()
         self._createDirs()
         self._copyFiles()
