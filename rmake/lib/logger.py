@@ -36,6 +36,8 @@ class Logger(object):
     consoleDateFormat = '%X'
     consoleFormat = '%(asctime)s - [%(name)s] - %(message)s'
     isCopy = False
+    delay = False
+    rotate = True
 
     formatterClass = logging.Formatter
     dateFormat = '%x %X %Z'
@@ -93,9 +95,13 @@ class Logger(object):
     def logToFile(self, logPath):
         if not self.fileHandler:
             util.mkdirChain(os.path.dirname(logPath))
-            fileHandler = handlers.RotatingFileHandler(logPath,
-                                                      maxBytes=LOGSIZE,
-                                                      backupCount=BACKUPS)
+            kwargs = dict()
+            if self.rotate:
+                fileHandler = handlers.RotatingFileHandler(logPath,
+                        maxBytes=LOGSIZE, backupCount=BACKUPS,
+                        delay=self.delay)
+            else:
+                fileHandler = logging.FileHandler(logPath, delay=self.delay)
             fileHandler.setFormatter(self.formatterClass(self.fileFormat,
                                                          self.dateFormat))
             self.fileHandler = fileHandler

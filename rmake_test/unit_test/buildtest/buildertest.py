@@ -73,12 +73,11 @@ class BuilderTest(rmakehelp.RmakeHelper):
         expected = sorted(expectReg + [specTrv])
         job.setBuildTroves._mock.assertCalled(expected)
 
-        logDir = builderObj.serverCfg.getBuildLogDir(1)
         rscache = self.rmakeCfg.getResolverCachePath()
         dephandler.DependencyHandler._mock.assertCalled(
                                          builderObj.job.getPublisher(),
                                          builderObj.logger,
-                                         expectReg, [specTrv], logDir,
+                                         expectReg, [specTrv],
                                          dumbMode=False,
                                          resolverCachePath=rscache)
 

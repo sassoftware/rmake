@@ -403,14 +403,15 @@ class JobStore(object):
     def deleteJobs(self, jobIdList):
         cu = self.db.cursor()
         troveIdList = []
-        troveList = []
+        logHashes = set()
         for jobId in jobIdList:
-            cu.execute('''SELECT troveId, troveName, version, flavor 
+            cu.execute('''SELECT troveId, troveName, version, flavor, logPath
                                       FROM BuildTroves WHERE jobId=?''', jobId)
-            for troveId, name, version, flavor in cu:
+            for troveId, name, version, flavor, logPath in cu:
                 version = versions.ThawVersion(version)
                 flavor = deps.ThawFlavor(flavor)
-                troveList.append((jobId, name, version, flavor))
+                if logPath:
+                    logHashes.add(logPath)
                 cu.execute('DELETE FROM BinaryTroves where troveId=?', troveId)
 
             for table in ['Jobs', 'JobConfig', 'Subscriber', 'BuildTroves',
@@ -418,7 +419,16 @@ class JobStore(object):
                 cu.execute('DELETE FROM %s WHERE jobId=?' % table, jobId)
             cu.execute('''DELETE FROM JobConfig
                           WHERE key="jobContext" AND value=?''', jobId)
-        return troveList
+        if logHashes:
+            # Prebuilt troves can refer to logs produced by previous builds.
+            # Keep any logs that are still referenced by jobs not being
+            # deleted.
+            placeholders = ',' .join('?' for x in logHashes)
+            cu.execute("SELECT logPath FROM BuildTroves WHERE logPath IN (%s)"
+                    % (placeholders,), list(logHashes))
+            for logPath, in cu:
+                logHashes.discard(logPath)
+        return logHashes
 
     def addJobConfig(self, jobId, context, jobConfig):
         cu = self.db.cursor()
@@ -514,7 +524,7 @@ class JobStore(object):
     def addTrove(self, trove):
         cu = self.db.cursor()
         if not trove.logPath:
-            trove.logPath = self.db.logStore.getTrovePath(trove)
+            trove.logPath = self.db.logStore.hashTrove(trove)
 
         failureTup = freeze('FailureReason', trove.getFailureReason())
         if failureTup[0] == '':

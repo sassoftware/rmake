@@ -131,8 +131,8 @@ class Database(DBInterface):
         return job
 
     def deleteJobs(self, jobIdList):
-        troveInfoList = self.jobStore.deleteJobs(jobIdList)
-        self.logStore.deleteLogs(troveInfoList)
+        logHashes = self.jobStore.deleteJobs(jobIdList)
+        self.logStore.deleteLogs(logHashes)
         self.commit()
         return jobIdList
 
@@ -237,20 +237,12 @@ class Database(DBInterface):
         return self.jobStore.isJobBuilding()
 
     def hasTroveBuildLog(self, trove):
-        if ((trove.logPath and os.path.exists(trove.logPath)) 
-             or self.logStore.hasTroveLog(trove)):
-            return True
-        return False
+        return self.logStore.hasTroveLog(trove.logPath)
 
     def openTroveBuildLog(self, trove):
-        if trove.logPath:
-            try:
-                return open(trove.logPath, 'r')
-            except (IOError, OSError), err:
-                raise errors.RmakeError('Could not open log for %s=%s[%s] from %s: %s' % (trove.getNameVersionFlavor() + (trove.jobId, err)))
-        else:
-            if self.logStore.hasTroveLog(trove):
-                return self.logStore.openTroveLog(trove)
+        try:
+            return self.logStore.openTroveLog(trove.logPath)
+        except KeyError:
             raise errors.RmakeError('Log for %s=%s[%s] from %s missing' % \
                                      (trove.getNameVersionFlavor() + 
                                       (trove.jobId,)))
@@ -327,9 +319,10 @@ class Database(DBInterface):
     def getTroveBuildLog(self, jobId, troveTuple, mark):
         jobId = self.convertToJobId(jobId)
         trove = self.getTrove(jobId, *troveTuple)
-        if not self.hasTroveBuildLog(trove):
+        try:
+            f = self.openTroveBuildLog(trove)
+        except KeyError:
             return not trove.isFinished(), '', 0
-        f = self.openTroveBuildLog(trove)
         if mark < 0:
             f.seek(0, 2)
             end = f.tell()

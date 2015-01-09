@@ -446,11 +446,10 @@ class DependencyHandler(object):
         Updates what troves are buildable based on dependency information.
     """
     def __init__(self, statusLog, logger, buildTroves, specialTroves,
-            logDir=None, dumbMode=False, resolverCachePath=None):
+            dumbMode=False, resolverCachePath=None):
         self.depState = DependencyBasedBuildState(buildTroves, specialTroves,
                 logger, dumbMode=dumbMode)
         self.logger = logger
-        self.logDir = logDir
         self.dumbMode = dumbMode
         self.specialTroves = specialTroves
         self.inactiveSpecial = list(specialTroves)

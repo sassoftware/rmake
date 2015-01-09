@@ -14,47 +14,109 @@
 # limitations under the License.
 #
 
-
+import errno
+import gzip
+import hashlib
+import hmac
+import os
 from conary.lib import sha1helper
 from conary.lib import util
-from conary.repository import datastore
 
-class DeletableDataStore(datastore.DataStore):
-    def deleteFile(self, hash):
-        path = self.hashToPath(hash)
-        util.removeIfExists(path)
 
 class LogStore(object):
+
     def __init__(self, path):
         util.mkdirChain(path)
-        self.store = DeletableDataStore(path)
-
-    def getTrovePath(self, trove):
-        return self.store.hashToPath(self.hashTrove(trove))
+        self.top = path
+        # This changes every instance and is only used to authenticate
+        # connections from a worker to the log store.
+        self.logKey = os.urandom(20)
 
     def hashTrove(self, trove):
         return sha1helper.sha1ToString(
                 sha1helper.sha1String('%s %s=%s[%s]' % (trove.jobId,
                       trove.getName(), trove.getVersion(), trove.getFlavor())))
 
-    def hashTroveInfo(self, jobId, name, version, flavor):
-        return sha1helper.sha1ToString(
-                sha1helper.sha1String('%s %s=%s[%s]' % (jobId, name, version, flavor)))
+    def _hashToPath(self, logHash):
+        assert len(logHash) >= 20
+        return os.path.join(self.top, logHash[:2], logHash[2:4], logHash[4:])
 
-    def addTroveLog(self, trove):
-        hash = self.hashTrove(trove)
-        self.store.addFile(open(trove.logPath, 'r'), hash, integrityCheck=False)
-        trove.logPath = ''
+    def getLogAuth(self, logHash):
+        return hmac.new(self.logKey, logHash, hashlib.sha1).hexdigest()
 
-    def hasTroveLog(self, trove):
-        hash = self.hashTrove(trove)
-        return self.store.hasFile(hash)
+    def openForWriting(self, logHash):
+        if self.hasTroveLog(logHash):
+            raise RuntimeError("Tried to open duplicate build log")
+        path = self._hashToPath(logHash)
+        util.mkdirChain(os.path.dirname(path))
+        return CompressedLogWriter(path)
 
-    def openTroveLog(self, trove):
-        hash = self.hashTrove(trove)
-        return self.store.openFile(hash)
+    def hasTroveLog(self, logHash):
+        if not logHash:
+            return False
+        path = self._hashToPath(logHash)
+        return os.path.exists(path) or os.path.exists(path + '.gz')
 
-    def deleteLogs(self, troveInfoList):
-        hashes = [ self.hashTroveInfo(*x) for x in troveInfoList ]
-        for hash in hashes:
-            self.store.deleteFile(hash)
+    def openTroveLog(self, logHash):
+        if not logHash:
+            raise KeyError
+        path = self._hashToPath(logHash)
+        try:
+            return open(path)
+        except IOError as err:
+            if err.args[0] != errno.ENOENT:
+                raise
+        try:
+            return gzip.GzipFile(path + '.gz')
+        except IOError as err:
+            if err.args[0] != errno.ENOENT:
+                raise
+        raise KeyError(logHash)
+
+    def deleteLogs(self, logHashes):
+        for logHash in logHashes:
+            path = self._hashToPath(logHash)
+            util.removeIfExists(path)
+            util.removeIfExists(path + '.gz')
+
+
+class CompressedLogWriter(object):
+    """
+    Simultaneously write to a plaintext log file and to a gzipped log file.
+    When the log is closed, both are flushed and then the plaintext file is
+    unlinked.
+
+    This allows clients to tail the plaintext log while efficiently storing a
+    compressed log to reference when the build is complete.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.f_plain = open(path, 'w', buffering=0)
+        self.f_gz = gzip.GzipFile(path + '.gz.new', 'w')
+
+    def write(self, data):
+        self.f_plain.write(data)
+        self.f_gz.write(data)
+
+    def close(self):
+        """Flush the gzipped log and unlink the plaintext log"""
+        self.f_plain.close()
+        self.f_gz.close()
+        try:
+            os.rename(self.path + '.gz.new', self.path + '.gz')
+            os.unlink(self.path)
+        except OSError as err:
+            if err.args[0] != errno.ENOENT:
+                raise
+
+    def beforeFork(self):
+        self.f_gz.fileobj.flush()
+
+    def afterFork(self):
+        self.f_plain.close()
+        self.f_gz.fileobj.close()
+        self.f_gz.fileobj = None
+
+    def filenos(self):
+        return [self.f_plain.fileno(), self.f_gz.fileno()]

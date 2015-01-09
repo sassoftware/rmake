@@ -18,6 +18,7 @@
 
 import os
 import re
+import time
 import socket
 import subprocess
 
@@ -128,10 +129,20 @@ def getMemInfo():
         return ('n/a', 'n/a'), ('n/a', 'n/a')
 
 
+_cached_netname = [0, 0]
 def getNetName():
     """
     Find a hostname or IP suitable for representing ourselves to clients.
     """
+    now = time.time()
+    if now - _cached_netname[0] < 60:
+        return _cached_netname[1]
+    cached = _getNetName()
+    _cached_netname[:] = [now, cached]
+    return cached
+
+
+def _getNetName():
     for (so_fam, addr) in [
             # These addresses are on the public internet, although they don't
             # necessarily point anywhere.

@@ -19,10 +19,11 @@
 SQL schema for the persistent DB store for rmake
 """
 
+import os
 from rmake import errors
 
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def createJobs(db):
@@ -474,6 +475,23 @@ class Migrator(AbstractMigrator):
         for table in ['SubscriberEvents', 'SubscriberData', 'Subscriber']:
             cu.execute("DROP TABLE " + table)
         return 13
+
+    def migrateFrom13(self):
+        # Remove absolute paths from logPath
+        cu = self.db.cursor()
+        cu.execute("SELECT troveId, logPath FROM BuildTroves")
+        for troveId, logPath in cu.fetchall():
+            pieces = logPath.split('/')
+            if (len(pieces) >= 3 and len(pieces[-3]) == 2
+                    and len(pieces[-2]) == 2 and len(pieces[-1]) == 36
+                    and os.path.exists(logPath)):
+                logPath = pieces[-3] + pieces[-2] + pieces[-1]
+            else:
+                logPath = ''
+            cu.execute("UPDATE BuildTroves SET logPath = ? WHERE troveId = ?",
+                    logPath, troveId)
+        return 14
+
 
 
 class PluginSchemaManager(AbstractSchemaManager):

@@ -73,6 +73,9 @@ class NodeClient(apirpc.ApiServer):
     def isConnected(self):
         return self.bus.isConnected()
 
+    def getMap(self):
+        return self.bus.session.getMap()
+
     def poll(self, *args, **kw):
         try:
             return self.bus.poll(*args, **kw)

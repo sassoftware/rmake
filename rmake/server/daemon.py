@@ -42,6 +42,7 @@ from rmake.multinode import admin
 from rmake.multinode.server import dispatcher
 from rmake.multinode.server import messagebus
 from rmake.multinode.server import subscriber as mn_subscriber
+from rmake.server import log_server
 from rmake.server import repos
 from rmake.server import servercfg
 from rmake.server import server
@@ -253,6 +254,7 @@ class RmakeServerProc(server_mod.Server):
             self._postStartupTasks()
             self._startRPC()
             self._startDispatcher()
+            self._startLogServer()
             self.plugins.callServerHook('server_postInit', self)
         except Exception:
             self.exception("Fatal error during rMake startup:")
@@ -422,6 +424,13 @@ and check the log file at %s for detailed diagnostics.
             self.exception("Failed to start RPC server:")
         finally:
             os._exit(70)
+
+    def _startLogServer(self):
+        log_server.LogServer(self.cfg, self.db,
+                map=self.nodeClient.getMap(),
+                fork=lambda name: self._fork(name, close=True),
+                logger=self._logger,
+                )
 
     def _postStartupTasks(self):
         """Normalize the state of things on startup"""

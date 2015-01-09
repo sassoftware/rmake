@@ -19,7 +19,6 @@
 Builder controls the process of building a set of troves.
 """
 import itertools
-import random
 import signal
 import sys
 import os
@@ -27,18 +26,16 @@ import time
 import traceback
 
 from conary import conaryclient
-from conary import trove
+from conary import trove as trv_mod
 from conary.deps import deps
-from conary.lib import util
 
 from rmake import failure
 from rmake.build import buildtrove
 from rmake.build import dephandler
-from rmake.lib import logfile
 from rmake.lib import logger
+from rmake.lib import procutil
 from rmake.lib import repocache
 from rmake.multinode.server import builderproxy
-from rmake.worker import recorder
 
 
 class Builder(object):
@@ -221,13 +218,11 @@ class Builder(object):
         self._matchPrebuiltTroves(regularTroves,
                                   self.job.getMainConfig().prebuiltBinaries)
 
-        logDir = self.serverCfg.getBuildLogDir(self.job.jobId)
-        util.mkdirChain(logDir)
         specialTroves = [ x for x in buildTroves if x.isSpecial() ]
         resolverCachePath = (self.serverCfg.useResolverCache
                 and self.serverCfg.getResolverCachePath())
         self.dh = dephandler.DependencyHandler(self.job.getPublisher(),
-                self.logger, regularTroves, specialTroves, logDir,
+                self.logger, regularTroves, specialTroves,
                 dumbMode=self.buildCfg.isolateTroves,
                 resolverCachePath=resolverCachePath,
                 )
@@ -367,7 +362,7 @@ class Builder(object):
 
         needed = {}
         for n,v,f in prebuiltTroveList:
-            if trove.troveIsGroup(n):
+            if trv_mod.troveIsGroup(n):
                 continue
             matchingTroves = trovesByNV.get((n + ':source',
                                                 v.getSourceVersion()), False)
@@ -478,28 +473,20 @@ class Builder(object):
         return True
 
     def startTroveLogger(self, trove):
-        key = ''.join([ chr(random.randrange(ord('a'), ord('z'))) 
-                      for x in range(10) ])
-        r = recorder.BuildLogRecorder(key)
-        r.attach(trove)
-        logHost = r.getHost()
-        logPort = r.getPort()
-        trove.logPath = r.getLogPath()
-        pid = self.worker._fork('BuildLogger for %s{%s}' % (trove.getName(),
-            trove.getContext() or ''))
-        if not pid:
-            try:
-                r.closeOtherFds()
-                r._installSignalHandlers()
-                r.serve_forever()
-            finally:
-                os._exit(3)
-        else:
-            r.close()
-            trove.logPid = pid
-        return logHost, logPort, key
+        assert trove.logPath
+        host = procutil.getNetName()
+        port = self.serverCfg.logServerPort
+        auth = self.db.logStore.getLogAuth(trove.logPath)
+        name = '%s %s{%s}' % (trove.jobId, trove.getName(),
+                trove.getContext() or '')
+        key = '%s %s %s' % (trove.logPath, auth, name[:64])
+        return host, port, key
+
 
 class BuildLogger(logger.Logger):
+   delay = True
+   rotate = False
+
    def __init__(self, jobId, path):
         logger.Logger.__init__(self, 'build-%s' % jobId, path)
 
