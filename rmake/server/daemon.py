@@ -200,6 +200,7 @@ class rMakeDaemon(daemon.Daemon):
 
         self.proc = RmakeServerProc(cfg, self.plugins, logger=self.logger)
         signal.signal(signal.SIGHUP, self._reload)
+        signal.signal(signal.SIGUSR2, self._rotateLogs)
         self.proc.serve_forever()
 
     def runCommand(self, *args, **kw):
@@ -207,6 +208,9 @@ class rMakeDaemon(daemon.Daemon):
 
     def _reload(self, signum, sigtb):
         self.proc.reload()
+
+    def _rotateLogs(self, signum, sigtb):
+        self.proc.rotateLogs()
 
     @classmethod
     def reloadConfig(cls):
@@ -271,6 +275,10 @@ class RmakeServerProc(server_mod.Server):
         self._reloadPending = True
         if self.rpcPid:
             os.kill(self.rpcPid, signal.SIGHUP)
+
+    def rotateLogs(self):
+        if self.rpcPid:
+            os.kill(self.rpcPid, signal.SIGUSR1)
 
     def _close(self):
         if self.db:

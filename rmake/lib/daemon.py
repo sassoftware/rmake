@@ -26,7 +26,6 @@ import time
 from conary.conarycfg import ConfigFile, CfgBool
 from conary.lib import options
 
-from rmake.lib import logfile
 from rmake.lib import logger
 
 (NO_PARAM,  ONE_PARAM)  = (options.NO_PARAM, options.ONE_PARAM)
@@ -123,7 +122,6 @@ class Daemon(options.MainHandler):
     useConaryOptions = False
 
     def __init__(self):
-        self._logFile = None
         self.logger = self.loggerClass(self.name)
         options.MainHandler.__init__(self)
 
@@ -212,18 +210,6 @@ class Daemon(options.MainHandler):
             sys.exit(1)
         os.kill(pid, signal.SIGHUP)
 
-    def getLogFile(self):
-        if self._logFile is not None:
-            return self._logFile
-        try:
-            logPath = os.path.join(self.cfg.logDir, "%s.log" % self.name)
-            self._logFile = logfile.LogFile(logPath)
-            return self._logFile
-        except OSError, err:
-            self.error('error opening logfile "%s" for writing: %s',
-                              logPath, err.strerror)
-            sys.exit(1)
-
     def info(self, msg, *args):
         self.logger.info(msg, *args)
 
@@ -284,11 +270,10 @@ class Daemon(options.MainHandler):
 
             if pid == 0:
                 self.logger.disableConsole()
-                # redirect stdout and stderr to <name>.log
-                logFile = self.getLogFile()
-                logFile.redirectOutput(close=True)
-                null = os.open("/dev/null", os.O_RDONLY)
-                os.dup2(null, sys.stdin.fileno())
+                null = os.open("/dev/null", os.O_RDWR)
+                os.dup2(null, 0)
+                os.dup2(null, 1)
+                os.dup2(null, 2)
                 os.close(null)
 
                 pid = os.fork()

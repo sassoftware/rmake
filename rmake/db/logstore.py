@@ -34,8 +34,9 @@ class LogStore(object):
 
     def hashTrove(self, trove):
         return sha1helper.sha1ToString(
-                sha1helper.sha1String('%s %s=%s[%s]' % (trove.jobId,
-                      trove.getName(), trove.getVersion(), trove.getFlavor())))
+                sha1helper.sha1String('%s %s=%s[%s]{%s}' % (trove.jobId,
+                    trove.getName(), trove.getVersion(), trove.getFlavor(),
+                    trove.getContext())))
 
     def _hashToPath(self, logHash):
         assert len(logHash) >= 20

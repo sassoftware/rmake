@@ -40,6 +40,7 @@ class GunicornServer(base.BaseApplication):
         self.cfg.set('proc_name', 'rmake rpc')
         self.cfg.set('workers', self.serverCfg.rpcWorkers)
         self.cfg.set('timeout', 3600) # FIXME
+        self.cfg.set('errorlog', self.serverCfg.getServerLogPath())
         # The config defaults might have been initialized as root so reset
         # uid/gid to the current user
         self.cfg.set('user', os.geteuid())

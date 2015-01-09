@@ -53,6 +53,9 @@ install: install-mkdirs rmake.init
 	$(INSTALL) -D -m644 repos/server.conf $(DESTDIR)/etc/rmake/server.d/repos
 	$(INSTALL) -d -m755 $(DESTDIR)/etc/conary-repos/vhosts
 	ln -sfn ../rmake-repos.cnr $(DESTDIR)/etc/conary-repos/vhosts/rmake.repos
+	# logging
+	$(INSTALL) -D -m644 logrotate.conf $(DESTDIR)/etc/rmake/logrotate.conf
+	$(INSTALL) -D -m755 logrotate.sh $(DESTDIR)/etc/cron.hourly/rmake-logrotate.sh
 
 install-client:
 

@@ -24,8 +24,6 @@ from conary.lib import util
 
 from rmake.lib import logger
 
-LOGSIZE = 10 * 1024 * 1024
-BACKUPS = 3
 
 class MessageBusLogger(logger.ServerLogger):
     name = 'messagebus'
@@ -52,9 +50,7 @@ class MessageBusLogger(logger.ServerLogger):
         if self.messageHandler:
             self.messageLogger.removeHandler(self.messageHandler)
         util.mkdirChain(os.path.dirname(logPath))
-        fileHandler = handlers.RotatingFileHandler(logPath, 
-                                                  maxBytes=LOGSIZE,
-                                                  backupCount=BACKUPS)
+        fileHandler = handlers.WatchedFileHandler(logPath)
         fileHandler.setFormatter(self.formatterClass(self.messageFormat,
                                                      self.dateFormat))
         self.messageHandler = fileHandler

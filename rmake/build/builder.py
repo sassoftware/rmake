@@ -485,7 +485,6 @@ class Builder(object):
 
 class BuildLogger(logger.Logger):
    delay = True
-   rotate = False
 
    def __init__(self, jobId, path):
         logger.Logger.__init__(self, 'build-%s' % jobId, path)
