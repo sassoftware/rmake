@@ -46,8 +46,6 @@ class LogStore(object):
         return hmac.new(self.logKey, logHash, hashlib.sha1).hexdigest()
 
     def openForWriting(self, logHash):
-        if self.hasTroveLog(logHash):
-            raise RuntimeError("Tried to open duplicate build log")
         path = self._hashToPath(logHash)
         util.mkdirChain(os.path.dirname(path))
         return CompressedLogWriter(path)
@@ -93,8 +91,15 @@ class CompressedLogWriter(object):
 
     def __init__(self, path):
         self.path = path
-        self.f_plain = open(path, 'w', buffering=0)
-        self.f_gz = gzip.GzipFile(path + '.gz.new', 'w')
+        self.f_plain = open(path, 'a', buffering=0)
+        if os.path.exists(path + '.gz'
+                ) and not os.fstat(self.f_plain.fileno()).st_size:
+            # The compressed log exists already, but the plain log was removed.
+            # Need to copy the compressed contents to the plain log.
+            f_gz = gzip.GzipFile(path + '.gz', 'r')
+            util.copyfileobj(f_gz, self.f_plain)
+            f_gz.close()
+        self.f_gz = gzip.GzipFile(path + '.gz', 'a')
 
     def write(self, data):
         self.f_plain.write(data)
@@ -104,12 +109,7 @@ class CompressedLogWriter(object):
         """Flush the gzipped log and unlink the plaintext log"""
         self.f_plain.close()
         self.f_gz.close()
-        try:
-            os.rename(self.path + '.gz.new', self.path + '.gz')
-            os.unlink(self.path)
-        except OSError as err:
-            if err.args[0] != errno.ENOENT:
-                raise
+        util.removeIfExists(self.path)
 
     def beforeFork(self):
         self.f_gz.fileobj.flush()
