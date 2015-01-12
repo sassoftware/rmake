@@ -71,7 +71,7 @@ class NodeConfiguration(servercfg.rMakeBuilderConfiguration):
     hostName          = None
 
     # job configuration
-    rmakeUrl          = (CfgString,   'https://localhost:9999')
+    rmakeUrl          = (CfgString,   'unix:///var/lib/rmake/socket')
     jobTypes          = CfgLineList(CfgJobType), ['BUILD']
     buildFlavors      = CfgSet(CfgFlavor)
     loadThreshold     = (CfgFloat, 2) # multiplied by the number of cpus

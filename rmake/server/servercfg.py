@@ -266,6 +266,15 @@ class rMakeConfiguration(rMakeBuilderConfiguration):
             uris.append(self._default_https_socket)
         return uris
 
+    def useGunicorn(self):
+        if self.rpcWorkers > 1:
+            return True
+        if any(x.startswith('http') for x in self.getServerUris()):
+            return True
+        if len(self.getServerUris()) > 1:
+            return True
+        return False
+
     def getDbPath(self):
         if not self.dbPath:
             return ('sqlite', self.serverDir + '/jobs.db')

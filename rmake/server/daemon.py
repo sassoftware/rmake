@@ -46,7 +46,7 @@ from rmake.server import log_server
 from rmake.server import repos
 from rmake.server import servercfg
 from rmake.server import server
-from rmake.server import wsgi_gunicorn
+from rmake.server import wsgi_simple
 # needed for deleting chroots upon "reset"
 from rmake.worker.chroot import rootmanager
 
@@ -417,15 +417,24 @@ and check the log file at %s for detailed diagnostics.
             os._exit(70)
 
     def _startRPC(self):
+        if self.cfg.useGunicorn():
+            try:
+                from rmake.server import wsgi_gunicorn
+            except ImportError:
+                self.error("gunicorn must be installed if rpcWorkers is > 1")
+                sys.exit(70)
         pid = self._fork('rpc', close=True,
                 criticalLogPath=self.cfg.getServerLogPath())
         if pid:
             self.rpcPid = pid
             return
         try:
-            configFunc = rMakeDaemon.reloadConfig
-            wsgi = wsgi_gunicorn.GunicornServer(configFunc)
-            wsgi.run()
+            if self.cfg.useGunicorn():
+                configFunc = rMakeDaemon.reloadConfig
+                wsgi = wsgi_gunicorn.GunicornServer(configFunc)
+                wsgi.run()
+            else:
+                wsgi_simple.run_simple(self.cfg)
         except SystemExit as err:
             os._exit(err.args[0])
         except Exception:
