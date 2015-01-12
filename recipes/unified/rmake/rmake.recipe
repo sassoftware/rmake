@@ -80,6 +80,7 @@ class RmakeRecipe(CPackageRecipe):
         r.SetModes('%(libexecdir)s/rmake/chroothelper', 04755)
         r.Requires('rmake:libexec', 'rootfactory.py')
         r.Requires(exceptDeps='python: (epdb|rmake.cmdline.password)')
+        r.Requires('/usr/sbin/logrotate', '/etc/cron.hourly/rmake-logrotate.sh')
         r.ComponentProvides('%(version)s')
         r.UtilizeUser('rmake-chroot', '%(libexecdir)s/rmake/chroothelper')
         r.UtilizeGroup('rmake-chroot', '%(libexecdir)s/rmake/chroothelper')
