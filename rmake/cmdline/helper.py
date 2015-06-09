@@ -29,6 +29,7 @@ import sys
 
 from conary import conaryclient
 from conary.conaryclient import cmdline
+from conary.lib import keystore
 from conary.lib import log
 from conary.repository import trovesource
 
@@ -41,7 +42,6 @@ from rmake.cmdline import cmdutil
 from rmake.cmdline import commit
 from rmake.cmdline import monitor
 from rmake.cmdline import query
-from rmake.lib import keystore
 from rmake.server import client
 
 
