@@ -141,11 +141,8 @@ class RmakeRecipe(CPackageRecipe):
         ## package rmake-multinode-server
         # This package has files required on the head node that controls
         # all the individual build nodes that are connected to it
-        r.Create('%(sysconfdir)s/rmake/client.d/00_rmake_multinode',
-                 contents='rmakeUrl https://localhost')
         r.PackageSpec('rmake-multinode-server',
                       '%(sysconfdir)s/rmake/server(rc|.d|.d/.keep).*',
-                      '%(sysconfdir)s/rmake/client.d/00_rmake_multinode',
                       '%(initdir)s/rmake',
                       '%(sbindir)s/rmake-messagebus',
                       '%(sbindir)s/rmake-server',
