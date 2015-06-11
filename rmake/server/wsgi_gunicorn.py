@@ -37,6 +37,7 @@ class GunicornServer(base.BaseApplication):
             self.serverCfg.updateFromReloaded(self.configFunc(), log=None)
         else:
             self.serverCfg = self.configFunc()
+        self.serverCfg.sanityCheckForStart()
         self.cfg.set('proc_name', 'rmake rpc')
         self.cfg.set('workers', self.serverCfg.rpcWorkers)
         self.cfg.set('timeout', 3600) # FIXME
